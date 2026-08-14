@@ -107,6 +107,7 @@ func _ready() -> void:
 	menu.solid_ceiling_changed.connect(func(on: bool) -> void: sim.solid_ceiling = on)
 	menu.heat_view_changed.connect(func(on: bool) -> void: sim.heat_view = on)
 	menu.pressure_view_changed.connect(func(on: bool) -> void: sim.pressure_view = on)
+	menu.velocity_view_changed.connect(func(on: bool) -> void: sim.velocity_view = on)
 	menu.clear_pressed.connect(_on_clear)
 	menu.save_pressed.connect(func() -> void: sim.save_canvas())
 	menu.load_pressed.connect(_on_load)
@@ -236,6 +237,8 @@ func _parse_test_args() -> void:
 			sim.heat_view = true
 		elif arg == "--force":
 			sim.pressure_view = true
+		elif arg == "--vel":
+			sim.velocity_view = true
 		elif arg == "--hide-ui":
 			# The panel floats over the bottom of the canvas, so hiding it
 			# is the only way to inspect what is happening at the floor.

@@ -51,9 +51,12 @@ static func ambient_cell() -> int:
 # Overlays: 0 materials, 1 temperature, 2 pressure.
 var heat_view := false
 var pressure_view := false
+var velocity_view := false
 
 
 func view_mode() -> int:
+	if velocity_view:
+		return 3
 	if pressure_view:
 		return 2
 	return 1 if heat_view else 0
@@ -93,7 +96,14 @@ var texture_rd := Texture2DRD.new()
 
 var _rd: RenderingDevice
 var _tex: Array[RID] = [RID(), RID()]
+# Velocity lives in its own ping-ponged texture: the cell is full, and
+# unlike temperature or pressure a velocity needs two components. Packed
+# as two int16 in one R32_UINT, in 1/64ths of a cell per tick.
+var _vel: Array[RID] = [RID(), RID()]
 var _cur := 0
+
+# vx = vy = 0 encoded, as a signed int32 for PackedInt32Array.fill.
+const VEL_ZERO := -2147450880 # 0x80008000
 
 var _stamp_shader: RID
 var _stamp_pipeline: RID
@@ -357,6 +367,12 @@ func _create_textures(w: int, h: int) -> void:
 	for i in 2:
 		_tex[i] = _rd.texture_create(fmt, RDTextureView.new(), [blank])
 
+	# Velocity starts at rest. It is transient, so a resize simply
+	# clears it rather than blitting the old field across.
+	var still := _blank_vel(w, h)
+	for i in 2:
+		_vel[i] = _rd.texture_create(fmt, RDTextureView.new(), [still])
+
 	# Texture2DRD cannot expose uint formats to the canvas renderer, so
 	# the colorize pass writes this RGBA8 copy for display.
 	var disp_fmt := RDTextureFormat.new()
@@ -381,6 +397,13 @@ func _blank_grid(w: int, h: int) -> PackedByteArray:
 	return cells.to_byte_array()
 
 
+func _blank_vel(w: int, h: int) -> PackedByteArray:
+	var cells := PackedInt32Array()
+	cells.resize(w * h)
+	cells.fill(VEL_ZERO)
+	return cells.to_byte_array()
+
+
 func _create_uniform_sets() -> void:
 	for i in 2:
 		var img := RDUniform.new()
@@ -394,7 +417,11 @@ func _create_uniform_sets() -> void:
 		cmd_u.add_id(_cmd_buffer)
 		_stamp_sets[i] = _rd.uniform_set_create([img, cmd_u], _stamp_shader, 0)
 
-		_move_sets[i] = _rd.uniform_set_create([img], _move_shader, 0)
+		var vel_img := RDUniform.new()
+		vel_img.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+		vel_img.binding = 1
+		vel_img.add_id(_vel[i])
+		_move_sets[i] = _rd.uniform_set_create([img, vel_img], _move_shader, 0)
 		_scramble_sets[i] = _rd.uniform_set_create([img], _scramble_shader, 0)
 
 		var col_src := RDUniform.new()
@@ -405,7 +432,12 @@ func _create_uniform_sets() -> void:
 		col_dst.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
 		col_dst.binding = 1
 		col_dst.add_id(_display_tex)
-		_colorize_sets[i] = _rd.uniform_set_create([col_src, col_dst], _colorize_shader, 0)
+		var col_vel := RDUniform.new()
+		col_vel.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+		col_vel.binding = 2
+		col_vel.add_id(_vel[i])
+		_colorize_sets[i] = _rd.uniform_set_create(
+			[col_src, col_dst, col_vel], _colorize_shader, 0)
 
 		var src_u := RDUniform.new()
 		src_u.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
@@ -419,7 +451,16 @@ func _create_uniform_sets() -> void:
 		ev_u.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
 		ev_u.binding = 2
 		ev_u.add_id(_event_buffer)
-		_reaction_sets[i] = _rd.uniform_set_create([src_u, dst_u, ev_u], _reaction_shader, 0)
+		var vsrc_u := RDUniform.new()
+		vsrc_u.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+		vsrc_u.binding = 3
+		vsrc_u.add_id(_vel[i])
+		var vdst_u := RDUniform.new()
+		vdst_u.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+		vdst_u.binding = 4
+		vdst_u.add_id(_vel[1 - i])
+		_reaction_sets[i] = _rd.uniform_set_create(
+			[src_u, dst_u, ev_u, vsrc_u, vdst_u], _reaction_shader, 0)
 
 
 func _free_uniform_sets() -> void:
@@ -437,6 +478,7 @@ func _gpu_resize(w: int, h: int) -> void:
 		return
 
 	var old_tex := _tex.duplicate()
+	var old_vel := _vel.duplicate()
 	var old_cur := _cur
 	_retired_displays.append([_display_tex, DISPLAY_RETIRE_FRAMES])
 
@@ -456,7 +498,7 @@ func _gpu_resize(w: int, h: int) -> void:
 
 	# The grid textures go immediately; the old display texture is
 	# retired on a delay (see _retired_displays).
-	for rid in [old_tex[0], old_tex[1]]:
+	for rid in [old_tex[0], old_tex[1], old_vel[0], old_vel[1]]:
 		if rid.is_valid():
 			_rd.free_rid(rid)
 
@@ -493,7 +535,7 @@ func _free_gpu() -> void:
 	_free_uniform_sets()
 	var rids := [_stamp_shader, _reaction_shader, _move_shader, _scramble_shader,
 		_colorize_shader, _cmd_buffer, _event_buffer, _tex[0], _tex[1],
-		_display_tex, _save_tex]
+		_vel[0], _vel[1], _display_tex, _save_tex]
 	for entry in _retired_displays:
 		rids.append(entry[0])
 	_retired_displays.clear()
@@ -698,6 +740,7 @@ func _gpu_clear() -> void:
 	if not _gpu_ready:
 		return
 	_rd.texture_update(_tex[_cur], 0, _blank_grid(_gpu_w, _gpu_h))
+	_rd.texture_update(_vel[_cur], 0, _blank_vel(_gpu_w, _gpu_h))
 
 
 func _gpu_save() -> void:
@@ -733,6 +776,7 @@ func _gpu_load() -> void:
 	# Wipe first: if the snapshot is smaller than the current grid, the
 	# uncovered region must not keep whatever is there now.
 	_rd.texture_update(_tex[_cur], 0, _blank_grid(_gpu_w, _gpu_h))
+	_rd.texture_update(_vel[_cur], 0, _blank_vel(_gpu_w, _gpu_h))
 
 	# Same bottom-left anchoring as a resize.
 	var copy_w := mini(_saved_w, _gpu_w)

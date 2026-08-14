@@ -9,6 +9,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 layout(set = 0, binding = 0, r32ui) uniform restrict readonly uimage2D grid;
 layout(set = 0, binding = 1, rgba8) uniform restrict writeonly image2D display_img;
+layout(set = 0, binding = 2, r32ui) uniform restrict readonly uimage2D vel;
 
 layout(push_constant) uniform Params {
 	uint view_mode; // 0 materials, 1 temperature, 2 pressure
@@ -94,6 +95,15 @@ void main() {
 	if (params.view_mode == 1u) {
 		float celsius = float(int((raw >> 8) & 0xFFFFu) - TEMP_OFFSET) * 0.1;
 		imageStore(display_img, p, vec4(heat_ramp(celsius), 1.0));
+		return;
+	}
+	if (params.view_mode == 3u) {
+		uint vr = imageLoad(vel, p).r;
+		vec2 v = vec2(float(int(vr & 0xFFFFu) - 32768),
+			float(int((vr >> 16) & 0xFFFFu) - 32768)) / 64.0;
+		float s = clamp(length(v) / 4.0, 0.0, 1.0);
+		imageStore(display_img, p, vec4(mix(vec3(0.08, 0.09, 0.11),
+			vec3(0.2, 1.0, 0.5), s), 1.0));
 		return;
 	}
 	if (params.view_mode == 2u) {

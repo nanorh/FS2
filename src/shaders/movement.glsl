@@ -16,6 +16,7 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 layout(set = 0, binding = 0, r32ui) uniform restrict uimage2D grid;
+layout(set = 0, binding = 1, r32ui) uniform restrict uimage2D vel;
 
 layout(push_constant) uniform Params {
 	int offset_x;
@@ -203,9 +204,18 @@ uint cpay[4];
 // Pressure belongs to the space, not to the material, so unlike the
 // payload it stays put when material moves through.
 uint cpress[4];
+// Velocity travels with the material, the way temperature does.
+uint cvel[4];
 bool cmoved[4];
 bool cvalid[4];
 bool cdirty[4];
+const uint VEL_ZERO = 0x80008000u;
+const float VEL_SCALE = 64.0;
+
+vec2 vel_at(int i) {
+	return vec2(float(int(cvel[i] & 0xFFFFu) - 32768),
+		float(int((cvel[i] >> 16) & 0xFFFFu) - 32768)) / VEL_SCALE;
+}
 const uint PAYLOAD_MASK = 0x00FFFF80u;
 const uint PRESS_MASK = 0xFF000000u;
 const int PRESS_OFFSET = 128;
@@ -241,6 +251,8 @@ uint load_elem_global(ivec2 p) {
 void move_cell(int from, int to) {
 	ce[to] = ce[from];
 	cpay[to] = cpay[from];
+	cvel[to] = cvel[from];
+	cvel[from] = VEL_ZERO;
 	ce[from] = EL_BACKGROUND;
 	// cpay[from] is left alone: the vacated space keeps its heat, as air
 	// at whatever temperature the material left behind.
@@ -256,6 +268,9 @@ void swap_cells(int a, int b) {
 	uint tmpp = cpay[a];
 	cpay[a] = cpay[b];
 	cpay[b] = tmpp;
+	uint tmpv = cvel[a];
+	cvel[a] = cvel[b];
+	cvel[b] = tmpv;
 	cmoved[a] = true;
 	cmoved[b] = true;
 	cdirty[a] = true;
@@ -296,6 +311,39 @@ bool resolve_pressure(int a, int b) {
 	if (ce[to] == EL_BACKGROUND) move_cell(from, to);
 	else swap_cells(from, to);
 	return true;
+}
+
+
+// Ballistic travel: material carrying real momentum moves along it.
+// This deliberately does not set the moved flag, so a cell that is
+// genuinely flying can be carried on by later passes in the same tick -
+// that is what lets a jet outrun its own falling speed. Ordinary
+// material never reaches this speed, so the one-move-per-tick cap still
+// governs everything else.
+void resolve_velocity(int i) {
+	if (!cvalid[i] || cmoved[i]) return;
+	if (ce[i] == EL_BACKGROUND || anchored(ce[i])) return;
+
+	vec2 v = vel_at(i);
+	if (length(v) < 1.0) return;
+
+	int dx = v.x > 0.5 ? 1 : (v.x < -0.5 ? -1 : 0);
+	int dy = v.y > 0.5 ? 1 : (v.y < -0.5 ? -1 : 0);
+	if (dx == 0 && dy == 0) return;
+
+	// Only the part of the step that lands inside this block is
+	// reachable; the offsets cycle, so other directions get their turn
+	// on other passes.
+	int tx = (i & 1) + dx;
+	int ty = (i >> 1) + dy;
+	if (tx < 0 || tx > 1 || ty < 0 || ty > 1) return;
+
+	int j = ty * 2 + tx;
+	if (!cvalid[j] || cmoved[j] || !displaceable(ce[j])) return;
+
+	if (ce[j] == EL_BACKGROUND) move_cell(i, j);
+	else swap_cells(i, j);
+	cmoved[j] = false;
 }
 
 
@@ -455,18 +503,25 @@ void main() {
 			ce[i] = raw & 63u;
 			cpay[i] = raw & PAYLOAD_MASK;
 			cpress[i] = raw & PRESS_MASK;
+			cvel[i] = imageLoad(vel, cpos[i]).r;
 			cmoved[i] = (raw & (MOVED_BIT | EMITTER_BIT)) != 0u;
 		} else {
 			ce[i] = EL_OOB;
 			cpay[i] = 0u;
 			cpress[i] = uint(PRESS_OFFSET) << 24;
+			cvel[i] = VEL_ZERO;
 			cmoved[i] = true;
 		}
 	}
 
 	uint order = pcg(uint(block.y * 4096 + block.x) ^ pcg(SALT_ORDER ^ (params.tick * 0x9E3779B9u) ^ params.pass_index));
 
-	// Pressure first: a blast overrides gravity for as long as it lasts.
+	// Momentum first, then the pressure gradient that creates it, then
+	// gravity: a blast overrides falling for as long as it lasts.
+	for (int i = 0; i < 4; i++) {
+		resolve_velocity(i);
+	}
+
 	resolve_pressure(0, 1);
 	resolve_pressure(2, 3);
 	resolve_pressure(0, 2);
@@ -505,6 +560,7 @@ void main() {
 		if (cvalid[i] && cdirty[i]) {
 			uint raw = ce[i] | cpay[i] | cpress[i] | (cmoved[i] ? MOVED_BIT : 0u);
 			imageStore(grid, cpos[i], uvec4(raw, 0u, 0u, 0u));
+			imageStore(vel, cpos[i], uvec4(cvel[i], 0u, 0u, 0u));
 		}
 	}
 }

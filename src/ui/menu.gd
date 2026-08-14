@@ -21,6 +21,7 @@ signal solid_floor_changed(enabled: bool)
 signal solid_ceiling_changed(enabled: bool)
 signal heat_view_changed(enabled: bool)
 signal pressure_view_changed(enabled: bool)
+signal velocity_view_changed(enabled: bool)
 signal clear_pressed
 signal save_pressed
 signal load_pressed
@@ -371,6 +372,14 @@ func _build_bounds() -> Control:
 	UITheme.style_ghost(press, UITheme.ACCENT)
 	press.toggled.connect(func(on: bool) -> void: pressure_view_changed.emit(on))
 	col.add_child(press)
+
+	var flow := Button.new()
+	flow.text = "Flow"
+	flow.toggle_mode = true
+	flow.tooltip_text = "Velocity view\nDraw how fast material is travelling. Overrides the other overlays."
+	UITheme.style_ghost(flow, UITheme.ACCENT)
+	flow.toggled.connect(func(on: bool) -> void: velocity_view_changed.emit(on))
+	col.add_child(flow)
 
 	return _column(UITheme.caption("World"), col)
 

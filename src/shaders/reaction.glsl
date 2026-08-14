@@ -23,6 +23,9 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 layout(set = 0, binding = 0, r32ui) uniform restrict readonly uimage2D src_grid;
 layout(set = 0, binding = 1, r32ui) uniform restrict writeonly uimage2D dst_grid;
 
+layout(set = 0, binding = 3, r32ui) uniform restrict readonly uimage2D src_vel;
+layout(set = 0, binding = 4, r32ui) uniform restrict writeonly uimage2D dst_vel;
+
 layout(set = 0, binding = 2, std430) restrict buffer Events {
 	uint count;
 	uint capacity;
@@ -376,6 +379,24 @@ bool is_liquid(uint e) {
 	return e == EL_WATER || e == EL_SALT_WATER || e == EL_OIL || e == EL_LAVA;
 }
 
+// Rigid material is a no-flow boundary: it transmits pressure rather
+// than swallowing it. Reading a wall as zero made every wall a sink, so
+// liquid all round a tank was accelerated into the walls and the breach
+// was no more inviting than solid stone.
+bool rigid(uint e) {
+	return e == EL_WALL || e == EL_WAX || e == EL_FUSE
+		|| e == EL_SPOUT || e == EL_WELL || e == EL_TORCH || e == EL_OOB;
+}
+
+// Neighbour pressure for diffusion and gradient. A rigid neighbour
+// reflects our own value back, contributing nothing either way.
+float press_bound(ivec2 q, float self_p) {
+	if (!in_grid(q)) return 0.0;
+	uint r = imageLoad(src_grid, q).r;
+	if (rigid(r & 63u) || (r & EMITTER_BIT) != 0u) return self_p;
+	return press_of_raw(r);
+}
+
 // Hydrostatic rest pressure: a liquid cell sits at the pressure of the
 // liquid directly above it plus its own weight, and a free surface sits
 // at zero. Each tick this reads the previous tick's value from above, so
@@ -389,6 +410,37 @@ float hydro_rest(uint e) {
 	ivec2 up = P + ivec2(0, -1);
 	if (!is_liquid(E(up))) return 0.0;
 	return min(Press(up) + LIQUID_WEIGHT, MAX_HYDRO);
+}
+
+/* ---------------------------- Velocity ---------------------------- */
+//
+// Its own texture, since the cell has no room left and a velocity needs
+// two components. Packed as two int16 in 1/64ths of a cell per tick.
+//
+// A pressure gradient accelerates material, and drag bleeds the speed
+// off. This is what lets material keep travelling after it leaves the
+// gradient that launched it: without it a breach only pushes at the
+// opening and everything goes ballistic the instant it is clear.
+
+const float VEL_SCALE = 64.0;
+// Light drag: material that has been thrown should coast, not stop
+// dead a couple of cells later.
+const float VEL_DRAG = 0.96;
+// Material passes through the gradient at a breach in roughly one tick,
+// so the gain has to be big enough that a single tick there imparts
+// speed worth carrying. Too small and everything leaves at well under
+// one cell per tick and never gets off the ground.
+const float VEL_GAIN = 0.40;
+const float VEL_MAX = 6.0;
+
+vec2 vel_of(uint r) {
+	return vec2(float(int(r & 0xFFFFu) - 32768),
+		float(int((r >> 16) & 0xFFFFu) - 32768)) / VEL_SCALE;
+}
+
+uint vel_bits(vec2 v) {
+	ivec2 q = clamp(ivec2(round(v * VEL_SCALE)) + 32768, ivec2(0), ivec2(65535));
+	return uint(q.x) | (uint(q.y) << 16);
 }
 
 void store(uint e) {
@@ -425,8 +477,8 @@ void main() {
 	{
 		float p = press_of_raw(raw);
 		float around =
-			Press(P + ivec2(0, 1)) + Press(P + ivec2(0, -1)) +
-			Press(P + ivec2(-1, 0)) + Press(P + ivec2(1, 0));
+			press_bound(P + ivec2(0, 1), p) + press_bound(P + ivec2(0, -1), p) +
+			press_bound(P + ivec2(-1, 0), p) + press_bound(P + ivec2(1, 0), p);
 		// Spread hard so the front actually travels. This also does the
 		// horizontal equalisation a connected body of liquid needs.
 		p += 0.55 * (around * 0.25 - p);
@@ -449,6 +501,31 @@ void main() {
 			over = sign(over) * max(abs(over) * 0.82 - 0.6, 0.0);
 		}
 		g_press = rest + over;
+	}
+
+	// Velocity: accelerate down the pressure gradient, then bleed off.
+	// Empty space and anchored material never carry momentum.
+	{
+		vec2 v = vel_of(imageLoad(src_vel, P).r);
+		float self_p = g_press;
+		vec2 grad = vec2(
+			press_bound(P + ivec2(1, 0), self_p) - press_bound(P + ivec2(-1, 0), self_p),
+			press_bound(P + ivec2(0, 1), self_p) - press_bound(P + ivec2(0, -1), self_p)) * 0.5;
+		// A fluid at rest already has a vertical pressure gradient, and
+		// gravity is exactly what it balances - the falling rules
+		// already account for it. Accelerating along it as well would
+		// double-count and push water upward out of its own tank. Only
+		// the part that departs from equilibrium drives flow, which at a
+		// breach is the horizontal component nothing is balancing.
+		if (is_liquid(e)) grad.y -= LIQUID_WEIGHT;
+		v = v * VEL_DRAG - grad * VEL_GAIN;
+		if (e == EL_BACKGROUND || e == EL_WALL || e == EL_OOB
+				|| (raw & EMITTER_BIT) != 0u) {
+			v = vec2(0.0);
+		}
+		if (length(v) > VEL_MAX) v = normalize(v) * VEL_MAX;
+		if (length(v) < 0.06) v = vec2(0.0);
+		imageStore(dst_vel, P, uvec4(vel_bits(v), 0u, 0u, 0u));
 	}
 
 	// A source is a fixed feature of the world: it never moves, never

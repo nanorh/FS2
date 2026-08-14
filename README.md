@@ -77,7 +77,14 @@ pressure field: teal is suction, white a blast front.
 Liquids also carry a **hydrostatic head**: a liquid cell rests at the pressure of
 the liquid above it plus its own weight, so a tall tank is under real pressure at
 its base and a breach low in its wall pushes water out on an arc rather than
-letting it run down the outside. See the limitation note at the end of this file.
+letting it run down the outside.
+
+Material carries **momentum** too, in its own texture — the cell itself is full. A
+pressure gradient accelerates material and drag bleeds the speed off, so something
+thrown keeps travelling after it leaves whatever launched it, and fast-moving
+material may cross several cells in a tick instead of the usual one. This is what
+makes an explosion throw debris in radiating streaks rather than just cratering.
+**Flow** draws the velocity field. See the limitation note at the end of this file.
 
 One consequence worth knowing: ice is no longer permanent. A block left in open air
 warms up and melts, where before it only melted on contact with specific materials.
@@ -237,14 +244,17 @@ tuning:
 - Rules of the form "convert one random neighbour" are approximated by dividing the
   probability by the neighbour count, which matches the rate but not the exact
   correlation between neighbours.
-- **A breached tank arcs, it does not jet.** Hydrostatic pressure builds correctly
-  and pushes water out of the breach, but the arc stays shallow, because cells
-  carry no momentum. A gradient accelerates material only while the material is
-  inside the gradient, and the instant water clears the breach there is nothing
-  left pushing it, so it goes ballistic immediately. The one-move-per-tick cap
-  compounds this by holding horizontal speed to at most the falling speed.
-  Letting a steep gradient move material several times per tick was tried and
-  changed nothing, for the same reason. A real jet needs per-cell velocity, which
-  is a substantially larger change and has no spare bits left in the cell.
+- **A breached tank still arcs rather than jetting.** Explosions throw material
+  convincingly, because a blast gradient is enormous, but a hydrostatic head is
+  perhaps a tenth of that and produces only a modest throw. Two real errors were
+  found and fixed along the way — walls read as pressure sinks, so liquid was
+  accelerated into every wall rather than out of the breach; and the vertical
+  hydrostatic gradient was accelerating material upward, double-counting gravity
+  which already balances it. With both fixed the velocity field is correctly
+  placed and directed, and the throw improved, but it is not a jet. The remaining
+  limits are that a cell is only in the gradient for a single tick, so it gets one
+  tick of acceleration, and that the Margolus partition lets a cell take at most
+  one step per pass in a given direction. Going further likely needs velocity to
+  carry material along a whole ray per tick rather than one block-step at a time.
 - The MYSTERY + FIRE canvas scramble is a butterfly-swap approximation of a
   Fisher-Yates shuffle, which cannot run sequentially on the GPU.
