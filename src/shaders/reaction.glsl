@@ -460,17 +460,44 @@ void main() {
 	// tick's temperature and store() carries it through any conversion.
 	{
 		float t = temp_of_raw(raw);
-		float neighbours =
-			Temp(P + ivec2(0, 1)) + Temp(P + ivec2(0, -1)) +
-			Temp(P + ivec2(-1, 0)) + Temp(P + ivec2(1, 0));
-		t += conductivity(e) * (neighbours * 0.25 - t);
-		// Only air and gas exchange heat with the room. A cell buried
-		// inside a body touches no room to lose heat to, so it can only
-		// change by conducting to its neighbours - which is what makes a
-		// body warm from its surface inward rather than everywhere at
-		// once. Leaking from every cell made a whole block equilibrate
-		// uniformly and so melt all at the same moment.
-		if (e == EL_BACKGROUND || e == EL_STEAM || e == EL_METHANE) {
+		float below = Temp(P + ivec2(0, 1));
+		float above = Temp(P + ivec2(0, -1));
+		float left = Temp(P + ivec2(-1, 0));
+		float right = Temp(P + ivec2(1, 0));
+
+		if (e == EL_BACKGROUND) {
+			// Air moves heat by convection, not conduction: warm air
+			// rises. Weighting the exchange heavily toward the cell
+			// below makes warmth climb, and that is the only way an
+			// enclosed space ever fills. Pure diffusion spreads about
+			// sqrt(time) cells - roughly seven of them in a thousand
+			// ticks - so a torch would heat its immediate neighbours
+			// and a room would stay cold indefinitely.
+			//
+			// The weights sum to one, so this stays a weighted average
+			// of the neighbours: a cell can never exceed its hottest
+			// neighbour and no energy can appear from nowhere.
+			float avg = 0.54 * below + 0.18 * (left + right) + 0.10 * above;
+			t += 0.62 * (avg - t);
+		} else {
+			t += conductivity(e) * ((below + above + left + right) * 0.25 - t);
+		}
+		// Still air does not shed heat to anywhere: it only conducts to
+		// what it touches, and the edges of the world are the sink,
+		// since Temp() reads room temperature outside the grid.
+		//
+		// Air used to lose 4% a tick to the room while conducting at
+		// only 0.10, which gives heat a decay length through air of
+		// under a single cell. Nothing could warm a space it was not
+		// touching, so a torch heated the cells beside it and an
+		// enclosed room stayed cold; and conversely a pocket sealed
+		// inside ice was warmed forever by a room it had no contact
+		// with. Removing the term fixes both: heat now fills an
+		// enclosure, and trapped air settles to whatever surrounds it.
+		//
+		// Gases keep the term, as a stand-in for their mixing and
+		// venting away.
+		if (e == EL_STEAM || e == EL_METHANE) {
 			t += 0.04 * (AMBIENT_C - t);
 		}
 		int reservoir = source_temp(e);

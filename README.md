@@ -86,9 +86,13 @@ material may cross several cells in a tick instead of the usual one. This is wha
 makes an explosion throw debris in radiating streaks rather than just cratering.
 **Flow** draws the velocity field. See the limitation note at the end of this file.
 
-Only air and gas exchange heat with the room; a cell buried inside a body touches
-no room to lose heat to, so bodies warm and cool from their surfaces inward rather
-than uniformly. Ice and water also carry **latent heat**: they pin themselves at
+Nothing sheds heat to the room directly: cells only conduct to what they touch, and
+the edges of the world are the sink. Bodies therefore warm and cool from their
+surfaces inward rather than uniformly, and air sealed inside something settles to
+whatever surrounds it instead of being warmed forever by a room it cannot reach.
+Air also carries heat upward by a convective bias, since warm air rises — without
+it, heat could not travel even one cell through air and nothing could warm a space
+it was not touching. Ice and water also carry **latent heat**: they pin themselves at
 their melting and boiling points while changing state, so arriving heat drives the
 phase change instead of the temperature. A block of ice therefore acts as a cold
 reservoir — it holds a cold halo around itself and melts from the outside in,
@@ -224,7 +228,7 @@ scale a player actually paints them), `heat` (lava and ice in one basin) and
 `blast` (a charge buried under a sand bank), `tank` (a breached water tank),
 `gunpowder` (a pile chain-detonating), `thermal` (ice and lava apart in open air,
 best watched in heat view) and `cavern` (a sealed air pocket inside a massive ice
-block). Add `--test-saveload` to exercise a save → clear → load round
+block) and `room` (a torch sealed in a stone room). Add `--test-saveload` to exercise a save → clear → load round
 trip, `--test-fill=x,y[,element]` to seed a bucket fill mid-run, and
 `--resize=1400x900,1700x1000` to drive one or more window resizes (spread through
 the first half of the frame budget).
@@ -267,13 +271,13 @@ tuning:
   tick of acceleration, and that the Margolus partition lets a cell take at most
   one step per pass in a given direction. Going further likely needs velocity to
   carry material along a whole ray per tick rather than one block-step at a time.
-- **A sealed air pocket stays weakly coupled to the room.** Air exchanges heat with
-  the room at a fixed rate, but whether a given pocket of air actually connects to
-  the outside is a global property, and a local pass cannot know it. So a cavern
-  sealed inside a block of ice keeps drawing a trickle of warmth and goes on
-  melting very slowly, where in reality it would give up the heat it holds, melt a
-  little, and stop. The visible behaviour is close — meltwater pools in the floor
-  and the walls round off — but it never quite reaches equilibrium.
+- **An enclosed space warms along the plume, but does not fill evenly.** Air moves
+  heat upward by a convective bias, so a torch sends a hot column to the ceiling
+  and heats what that column touches. It does not fill the room, because filling
+  one needs a circulation — rise, spread along the ceiling, sink at the walls,
+  return — and sideways transport here is still diffusion, which spreads as the
+  square root of time and cannot cross hundreds of cells. Doing it properly means
+  treating air as a fluid driven by buoyancy, using the velocity field.
 - **A gunpowder explosion that fails to ignite puts one grain back rather than
   painting a 3×3 of fresh powder.** The original scatters unburnt powder across
   the blast square, which is fine when cells detonate one at a time down a

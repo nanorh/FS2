@@ -349,6 +349,16 @@ func _setup_demo(name: String) -> void:
 			sim.stamp_segment(Elements.WALL, 520, 120, 520, 555, 5)
 			sim.stamp_segment(Elements.WALL, 520, 580, 520, 645, 5)
 			sim.stamp_rect(Elements.WATER, 306, 130, 516, 640, 100)
+		"room":
+			# A torch sealed in a stone room. The enclosed air should
+			# warm through, not sit at room temperature a cell from the
+			# flame. Best watched in heat view.
+			sim.stamp_segment(Elements.WALL, 340, 190, 960, 190, 6)
+			sim.stamp_segment(Elements.WALL, 340, 650, 960, 650, 6)
+			sim.stamp_segment(Elements.WALL, 340, 190, 340, 650, 6)
+			sim.stamp_segment(Elements.WALL, 960, 190, 960, 650, 6)
+			sim.stamp_stroke(Elements.FIRE, FallingSand.CMD_SEGMENT,
+				650, 620, 650, 620, 5, true, true)
 		"cavern":
 			# A sealed air pocket inside a massive block of ice. The
 			# trapped air should give up the heat it holds, melt a little
