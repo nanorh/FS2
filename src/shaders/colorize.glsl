@@ -51,6 +51,12 @@ void main() {
 	ivec2 p = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(grid);
 	if (p.x >= size.x || p.y >= size.y) return;
-	uint id = min(imageLoad(grid, p).r & 63u, 33u);
-	imageStore(display_img, p, vec4(PALETTE[id], 1.0));
+	uint raw = imageLoad(grid, p).r;
+	vec3 colour = PALETTE[min(raw & 63u, 33u)];
+	// Sources are washed toward white so they read as fixed fixtures
+	// rather than loose material of the same kind.
+	if ((raw & 128u) != 0u) {
+		colour = mix(colour, vec3(1.0), 0.45);
+	}
+	imageStore(display_img, p, vec4(colour, 1.0));
 }

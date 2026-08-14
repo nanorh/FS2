@@ -1,25 +1,29 @@
 # Control panel: element palette, tools, brush size, simulation speed,
-# spigot configuration and canvas actions.
+# world bounds and canvas actions.
 #
-# Two centred rows. The palette on top stretches to the full width, so
-# widening the window makes the chips grow rather than leaving a gap at
-# the right; the controls below stay centred under it. Hovering any
-# element describes what it does.
+# A floating card the user can drag anywhere and collapse to its header.
+# Two centred rows of controls sit under that header.
+#
+# Clicking an already-selected material a second time switches it to
+# source mode, which paints a fixed emitter of that material instead of
+# loose material. That replaces the original's dedicated spout, well and
+# torch elements.
 class_name SandMenu
 extends PanelContainer
 
 signal element_selected(elem: int)
+signal emitter_changed(enabled: bool)
 signal pen_size_changed(radius: int)
 signal mode_changed(mode: int)
 signal overwrite_changed(enabled: bool)
 signal speed_changed(fps: int)
 signal solid_floor_changed(enabled: bool)
 signal solid_ceiling_changed(enabled: bool)
-signal spigot_element_changed(index: int, elem: int)
-signal spigot_size_changed(index: int, size: int)
 signal clear_pressed
 signal save_pressed
 signal load_pressed
+# Emitted when the panel's own size changes, so the owner can reposition it.
+signal layout_changed
 
 const DEFAULT_FPS := 60
 const MAX_FPS := 120
@@ -28,18 +32,28 @@ const MIN_RADIUS := 1
 const MAX_RADIUS := 64
 const DEFAULT_RADIUS := 2
 
-# Fixed column count keeps the palette exactly two rows tall at every
-# window size, so the panel height never changes and cannot feed back
-# into the grid resize. Chips are a fixed width and the block is centred:
-# stretching them to the window only moves the empty space inside the
-# chips.
-const PALETTE_COLUMNS := 12
+# 20 materials as 10x2. Chips are a fixed width and the block is centred:
+# stretching them to the window only moves the empty space inside them.
+const PALETTE_COLUMNS := 10
 const CHIP_WIDTH := 98
+
+# True once the user has dragged the panel; the owner then stops
+# re-centring it and only clamps it back inside the window.
+var user_positioned := false
 
 var _size_label: Label
 var _speed_label: Label
 var _fps := 0
 var _speed := DEFAULT_FPS
+
+var _body: VBoxContainer
+var _collapse_button: Button
+var _chips := {}
+var _selected := Elements.WALL
+var _emitter := false
+
+var _dragging := false
+var _drag_offset := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -48,16 +62,20 @@ func _ready() -> void:
 	var root := MarginContainer.new()
 	root.add_theme_constant_override("margin_left", 16)
 	root.add_theme_constant_override("margin_right", 16)
-	root.add_theme_constant_override("margin_top", 10)
+	root.add_theme_constant_override("margin_top", 8)
 	root.add_theme_constant_override("margin_bottom", 10)
 	add_child(root)
 
-	var rows := VBoxContainer.new()
-	rows.add_theme_constant_override("separation", 10)
-	root.add_child(rows)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 6)
+	root.add_child(outer)
+	outer.add_child(_build_header())
 
-	rows.add_child(_build_palette())
-	rows.add_child(_build_controls())
+	_body = VBoxContainer.new()
+	_body.add_theme_constant_override("separation", 10)
+	outer.add_child(_body)
+	_body.add_child(_build_palette())
+	_body.add_child(_build_controls())
 
 
 func set_fps_text(fps: int) -> void:
@@ -65,7 +83,75 @@ func set_fps_text(fps: int) -> void:
 	_refresh_speed_label()
 
 
-# A control with a small heading above it.
+# ------------------------------------------------------------------
+# Header: drag handle and collapse
+# ------------------------------------------------------------------
+
+func _build_header() -> Control:
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 8)
+
+	var grip := TextureRect.new()
+	grip.texture = UITheme.glyph(UITheme.GLYPH_GRIP, 14, UITheme.TEXT_FAINT)
+	grip.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	grip.custom_minimum_size = Vector2(14, 14)
+	grip.tooltip_text = "Drag to move the panel"
+	bar.add_child(grip)
+
+	var title := UITheme.caption("Falling Sand")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(title)
+
+	_collapse_button = Button.new()
+	_collapse_button.custom_minimum_size = Vector2(22, 16)
+	_collapse_button.tooltip_text = "Collapse the panel"
+	_collapse_button.icon = UITheme.glyph(UITheme.GLYPH_CARET_DOWN, 14, Color.WHITE)
+	UITheme.style_tool(_collapse_button)
+	_collapse_button.pressed.connect(_toggle_collapsed)
+	bar.add_child(_collapse_button)
+
+	return bar
+
+
+func set_collapsed(collapsed: bool) -> void:
+	_body.visible = not collapsed
+	_collapse_button.icon = UITheme.glyph(
+		UITheme.GLYPH_CARET_DOWN if _body.visible else UITheme.GLYPH_CARET_UP,
+		14, Color.WHITE)
+	_collapse_button.tooltip_text = \
+		"Collapse the panel" if _body.visible else "Expand the panel"
+	# The card shrinks to its header; let the owner re-place it.
+	reset_size()
+	layout_changed.emit()
+
+
+func _toggle_collapsed() -> void:
+	set_collapsed(_body.visible)
+
+
+# Dragging anywhere on the card that is not itself a control.
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_dragging = true
+			_drag_offset = get_global_mouse_position() - global_position
+		else:
+			_dragging = false
+		accept_event()
+	elif event is InputEventMouseMotion and _dragging:
+		user_positioned = true
+		var vp := get_viewport_rect().size
+		var wanted := get_global_mouse_position() - _drag_offset
+		position = Vector2(
+			clampf(wanted.x, 0.0, maxf(0.0, vp.x - size.x)),
+			clampf(wanted.y, 0.0, maxf(0.0, vp.y - size.y)))
+		accept_event()
+
+
+# ------------------------------------------------------------------
+# Palette
+# ------------------------------------------------------------------
+
 func _column(heading: Label, content: Control) -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 5)
@@ -84,23 +170,59 @@ func _build_palette() -> Control:
 
 	var group := ButtonGroup.new()
 	for elem in Elements.MENU_ITEMS:
-		var colour: Color = Elements.menu_color(elem)
 		var btn := Button.new()
 		btn.text = Elements.MENU_NAMES[elem]
 		btn.toggle_mode = true
 		btn.button_group = group
-		btn.icon = UITheme.dot(colour, 9)
-		btn.tooltip_text = Elements.describe(elem)
+		btn.icon = UITheme.dot(Elements.menu_color(elem), 9)
 		btn.custom_minimum_size = Vector2(CHIP_WIDTH, 0)
-		UITheme.style_swatch(btn, colour)
+		UITheme.style_swatch(btn, Elements.menu_color(elem))
 		var e := elem
-		btn.pressed.connect(func() -> void: element_selected.emit(e))
+		# button_down rather than pressed: a ButtonGroup swallows the
+		# pressed signal when the already-selected button is clicked, and
+		# that second click is exactly what toggles source mode.
+		btn.button_down.connect(func() -> void: _on_chip_pressed(e))
 		grid.add_child(btn)
-		if elem == Elements.WALL:
-			btn.button_pressed = true
+		_chips[elem] = btn
+		_refresh_chip(elem)
 
+	_chips[Elements.WALL].button_pressed = true
 	return grid
 
+
+func _on_chip_pressed(elem: int) -> void:
+	if elem == _selected and Elements.can_emit(elem):
+		_emitter = not _emitter
+	else:
+		var was := _selected
+		_selected = elem
+		_emitter = false
+		_refresh_chip(was)
+	_refresh_chip(elem)
+	element_selected.emit(elem)
+	emitter_changed.emit(_emitter)
+
+
+# Source-mode chips swap their dot for a ringed dot and say so on hover.
+func _refresh_chip(elem: int) -> void:
+	var btn: Button = _chips.get(elem)
+	if btn == null:
+		return
+	var colour: Color = Elements.menu_color(elem)
+	var on := elem == _selected and _emitter
+	btn.icon = UITheme.source_dot(colour, 9) if on else UITheme.dot(colour, 9)
+	var tip := Elements.describe(elem)
+	if Elements.can_emit(elem):
+		tip += "\n\nClick again for a source that emits it continuously."
+		if on:
+			tip = "%s (source)\n%s" % [Elements.MENU_NAMES[elem],
+				"Paints a fixed emitter. Click again for loose material."]
+	btn.tooltip_text = tip
+
+
+# ------------------------------------------------------------------
+# Controls
+# ------------------------------------------------------------------
 
 func _build_controls() -> Control:
 	var row := HBoxContainer.new()
@@ -110,7 +232,6 @@ func _build_controls() -> Control:
 	row.add_child(_build_size())
 	row.add_child(_build_speed())
 	row.add_child(_build_bounds())
-	row.add_child(_build_spigots())
 	row.add_child(_build_actions())
 	return row
 
@@ -232,44 +353,6 @@ func _build_bounds() -> Control:
 	col.add_child(floor_btn)
 
 	return _column(UITheme.caption("Solid"), col)
-
-
-func _build_spigots() -> Control:
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 14)
-	grid.add_theme_constant_override("v_separation", 3)
-
-	for i in Spigots.NUM_SPIGOTS:
-		var idx := i
-		var cell := HBoxContainer.new()
-		cell.add_theme_constant_override("separation", 4)
-
-		var type_btn := OptionButton.new()
-		for k in Elements.SPIGOT_OPTIONS.size():
-			type_btn.add_item(Elements.MENU_NAMES[Elements.SPIGOT_OPTIONS[k]], k)
-		type_btn.select(i) # spigot i defaults to option i, as in the original
-		type_btn.custom_minimum_size = Vector2(96, 0)
-		type_btn.tooltip_text = "Spigot %d material" % (i + 1)
-		UITheme.style_option(type_btn)
-		type_btn.item_selected.connect(func(opt: int) -> void:
-			spigot_element_changed.emit(idx, Elements.SPIGOT_OPTIONS[opt]))
-		cell.add_child(type_btn)
-
-		var size_btn := OptionButton.new()
-		for k in Spigots.SIZE_OPTIONS.size():
-			size_btn.add_item(str(k), k)
-		size_btn.select(Spigots.DEFAULT_SIZE_IDX)
-		size_btn.custom_minimum_size = Vector2(40, 0)
-		size_btn.tooltip_text = "Spigot %d width (0 turns it off)" % (i + 1)
-		UITheme.style_option(size_btn)
-		size_btn.item_selected.connect(func(opt: int) -> void:
-			spigot_size_changed.emit(idx, Spigots.SIZE_OPTIONS[opt]))
-		cell.add_child(size_btn)
-
-		grid.add_child(cell)
-
-	return _column(UITheme.caption("Spigots"), grid)
 
 
 func _build_actions() -> Control:

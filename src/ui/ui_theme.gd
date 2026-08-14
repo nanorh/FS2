@@ -67,7 +67,23 @@ static func dot(color: Color, size: int) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
-enum { GLYPH_CIRCLE, GLYPH_SQUARE, GLYPH_SPRAY, GLYPH_FILL }
+enum { GLYPH_CIRCLE, GLYPH_SQUARE, GLYPH_SPRAY, GLYPH_FILL,
+	GLYPH_CARET_DOWN, GLYPH_CARET_UP, GLYPH_GRIP }
+
+
+# A dot inside a ring: marks a palette chip that is in source mode.
+static func source_dot(colour: Color, size: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var c := (size - 1) * 0.5
+	var outer := size * 0.5 - 0.5
+	for y in size:
+		for x in size:
+			var d := Vector2(x - c, y - c).length()
+			var ring := clampf(1.1 - absf(d - (outer - 0.6)), 0.0, 1.0)
+			var core := clampf(outer * 0.34 - d + 0.5, 0.0, 1.0)
+			_put(img, x, y, colour, maxf(ring, core))
+	return ImageTexture.create_from_image(img)
 
 
 # Tool icons, drawn procedurally so the project stays asset-free.
@@ -112,6 +128,23 @@ static func glyph(kind: int, size: int, colour: Color) -> ImageTexture:
 					var edge := clampf(1.2 - absf(d - r), 0.0, 1.0)
 					var inside := 1.0 if (d < r and float(y) > c + 0.5) else 0.0
 					_put(img, x, y, colour, maxf(edge, inside * 0.85))
+		GLYPH_CARET_DOWN, GLYPH_CARET_UP:
+			# Two diagonals meeting at a point, drawn two pixels thick.
+			var dir := 1 if kind == GLYPH_CARET_DOWN else -1
+			var arm := int(r * 0.7)
+			for i in arm + 1:
+				var yy := int(c) - (arm / 2) * dir + i * dir
+				_put(img, int(c) - arm + i, yy, colour, 1.0)
+				_put(img, int(c) + arm - i, yy, colour, 1.0)
+				_put(img, int(c) - arm + i, yy + dir, colour, 0.55)
+				_put(img, int(c) + arm - i, yy + dir, colour, 0.55)
+		GLYPH_GRIP:
+			# Two rows of three dots: the conventional drag affordance.
+			for gy in 2:
+				for gx in 3:
+					var px := int(c) - 3 + gx * 3
+					var py := int(c) - 2 + gy * 3
+					_put(img, px, py, colour, 0.9)
 
 	return ImageTexture.create_from_image(img)
 

@@ -61,6 +61,9 @@ const uint EL_CHARGED_NITRO = 33u;
 const uint EL_OOB = 63u; // sentinel for out-of-grid: immovable, non-background
 
 const uint MOVED_BIT = 64u;
+// Bit 7 marks a fixed source. Source cells never move and nothing may
+// displace them, so they are loaded as already-moved.
+const uint EMITTER_BIT = 128u;
 
 // RNG salts (shared meanings with reaction.glsl where replayed)
 const uint SALT_GRAV = 1u;
@@ -382,7 +385,7 @@ void main() {
 		if (cvalid[i]) {
 			uint raw = imageLoad(grid, cpos[i]).r;
 			ce[i] = raw & 63u;
-			cmoved[i] = (raw & MOVED_BIT) != 0u;
+			cmoved[i] = (raw & (MOVED_BIT | EMITTER_BIT)) != 0u;
 		} else {
 			ce[i] = EL_OOB;
 			cmoved[i] = true;

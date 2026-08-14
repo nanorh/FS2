@@ -19,6 +19,12 @@ var height := 720
 # produce a zero-sized texture.
 const MIN_DIM := 16
 
+# Element id plus the source bit, skipping the movement pass's moved
+# flag. Comparing fill cells through this mask means a source is never
+# the same "colour" as loose material of its own element, so fills stop
+# at sources instead of quietly wiping them out.
+const FILL_MASK := 0b1011_1111
+
 const MAX_COMMANDS := 1024
 const CMD_INTS := 8
 const MAX_EVENTS := 4096
@@ -33,6 +39,7 @@ const CMD_SPRAY := 4
 # Stamp flags
 const FLAG_OVERWRITE := 1
 const FLAG_SKIP_WALL := 2
+const FLAG_EMITTER := 4
 
 # Event types (must match reaction.glsl)
 const EV_NITRO := 1
@@ -154,10 +161,12 @@ func stamp_cell(elem: int, x: int, y: int, overwrite := true) -> void:
 
 
 # A stroke with a selectable profile: CMD_SEGMENT (round), CMD_SQUARE or
-# CMD_SPRAY.
+# CMD_SPRAY. With `emitter` the stroke lays down fixed sources of the
+# material rather than loose material.
 func stamp_stroke(elem: int, kind: int, x0: int, y0: int, x1: int, y1: int,
-		radius: int, overwrite := true) -> void:
-	_push_cmd(kind, elem, _flags(overwrite, false), x0, y0, x1, y1, radius)
+		radius: int, overwrite := true, emitter := false) -> void:
+	var f := _flags(overwrite, false) | (FLAG_EMITTER if emitter else 0)
+	_push_cmd(kind, elem, f, x0, y0, x1, y1, radius)
 
 
 # Bucket fill: replaces the connected region of whatever element sits at
@@ -587,7 +596,7 @@ func _gpu_flood_fill(sx: int, sy: int, elem: int) -> void:
 	var w := _gpu_w
 	var h := _gpu_h
 	var cells := _rd.texture_get_data(_tex[_cur], 0).to_int32_array()
-	var target := cells[sy * w + sx] & 63
+	var target := cells[sy * w + sx] & FILL_MASK
 	if target == elem:
 		return
 
@@ -603,10 +612,10 @@ func _gpu_flood_fill(sx: int, sy: int, elem: int) -> void:
 
 		# Expand the run to both ends of the contiguous target span.
 		var left := seed - row
-		while left > 0 and (cells[row + left - 1] & 63) == target:
+		while left > 0 and (cells[row + left - 1] & FILL_MASK) == target:
 			left -= 1
 		var right := seed - row
-		while right < w - 1 and (cells[row + right + 1] & 63) == target:
+		while right < w - 1 and (cells[row + right + 1] & FILL_MASK) == target:
 			right += 1
 
 		for x in range(left, right + 1):
@@ -619,9 +628,9 @@ func _gpu_flood_fill(sx: int, sy: int, elem: int) -> void:
 			var nrow: int = ny * w
 			var x := left
 			while x <= right:
-				if (cells[nrow + x] & 63) == target:
+				if (cells[nrow + x] & FILL_MASK) == target:
 					stack.append(nrow + x)
-					while x <= right and (cells[nrow + x] & 63) == target:
+					while x <= right and (cells[nrow + x] & FILL_MASK) == target:
 						x += 1
 				else:
 					x += 1

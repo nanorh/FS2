@@ -82,18 +82,34 @@ static var COLORS := PackedColorArray([
 
 # Elements offered in the drawing palette, in original menu order.
 #
-# SOIL is temporarily withheld from the palette. Its simulation is
-# untouched - SOIL, WET_SOIL and the tree growth they seed all still run,
-# and anything already on the canvas keeps behaving normally. Restore it
-# by putting SOIL back in this list.
+# Withheld, with their simulation left completely intact:
+#   SOIL              - temporarily hidden at request.
+#   SPOUT/WELL/TORCH  - superseded by source mode, which turns any
+#                       flowing material into an emitter. Cells of these
+#                       types still behave normally if loaded from a
+#                       save, and the reaction rules that reference them
+#                       (steam condensing on a spout, for instance) are
+#                       unchanged.
+# Restore any of them by putting it back in this list.
 static var MENU_ITEMS: Array[int] = [
 	WALL, SAND, WATER, PLANT,
-	FIRE, SPOUT, WELL, SALT,
-	OIL, WAX, TORCH, ICE,
-	GUNPOWDER, NAPALM, NITRO, C4,
-	LAVA, CRYO, FUSE, MYSTERY,
-	CONCRETE, METHANE, BACKGROUND,
+	FIRE, SALT, OIL, WAX,
+	ICE, GUNPOWDER, NAPALM, NITRO,
+	C4, LAVA, CRYO, FUSE,
+	MYSTERY, CONCRETE, METHANE, BACKGROUND,
 ]
+
+# Materials that can be placed as a source. Anything that flows - powder,
+# liquid or gas - plus fire, which gives the old torch. Static solids are
+# excluded: a source of something that never moves is just the solid.
+static var EMITTABLE: Array[int] = [
+	SAND, WATER, SALT, OIL, FIRE, GUNPOWDER,
+	NAPALM, NITRO, LAVA, CRYO, MYSTERY, CONCRETE, METHANE,
+]
+
+
+static func can_emit(elem: int) -> bool:
+	return EMITTABLE.has(elem)
 
 static var MENU_NAMES := {
 	WALL: "WALL", SAND: "SAND", WATER: "WATER", PLANT: "PLANT",

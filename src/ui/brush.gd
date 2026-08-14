@@ -32,6 +32,13 @@ var mode := MODE_CIRCLE:
 		mode = value
 		queue_redraw()
 
+# Source mode: strokes lay down fixed emitters of the selected material
+# instead of loose material.
+var emitter := false:
+	set(value):
+		emitter = value
+		queue_redraw()
+
 var overwrite := true
 
 var _pressed := false
@@ -76,7 +83,7 @@ func update_stroke() -> void:
 	# Eraser always overwrites, like the original.
 	var ow := overwrite or selected_elem == Elements.BACKGROUND
 	sim.stamp_stroke(selected_elem, _stamp_kind(),
-		_prev.x, _prev.y, _pos.x, _pos.y, pen_radius, ow)
+		_prev.x, _prev.y, _pos.x, _pos.y, pen_radius, ow, emitter)
 	_prev = _pos
 
 

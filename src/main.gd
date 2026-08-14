@@ -1,6 +1,10 @@
-﻿# Game root: wires the sim, display, brush, particles, spigots and menu
-# together and drives the fixed-rate tick loop (frameDebt accumulator,
-# like game.js mainLoop).
+﻿# Game root: wires the sim, display, brush, particles and menu together
+# and drives the fixed-rate tick loop (frameDebt accumulator, like
+# game.js mainLoop).
+#
+# The four fixed spigots are gone: any flowing material can now be
+# painted as a source instead. src/sim/spigots.gd is left in the tree
+# unused so the old behaviour can be restored if wanted.
 extends Control
 
 const MAX_FRAME_DEBT := 5.0
@@ -23,7 +27,6 @@ const PANEL_MARGIN := 18
 
 var sim: FallingSand
 var particles: SandParticles
-var spigots: Spigots
 var brush: Brush
 var menu: SandMenu
 var view: TextureRect
@@ -66,7 +69,6 @@ func _ready() -> void:
 	add_child(sim)
 
 	particles = SandParticles.new(grid.x, grid.y)
-	spigots = Spigots.new(grid.x)
 
 	view = TextureRect.new()
 	view.texture = sim.texture_rd
@@ -94,15 +96,15 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_resized)
 	_layout(grid)
 
+	menu.layout_changed.connect(_position_menu)
 	menu.element_selected.connect(func(e: int) -> void: brush.selected_elem = e)
+	menu.emitter_changed.connect(func(on: bool) -> void: brush.emitter = on)
 	menu.pen_size_changed.connect(func(r: int) -> void: brush.pen_radius = r)
 	menu.mode_changed.connect(func(m: int) -> void: brush.mode = m)
 	menu.overwrite_changed.connect(func(on: bool) -> void: brush.overwrite = on)
 	menu.speed_changed.connect(func(fps: int) -> void: fps_setting = fps)
 	menu.solid_floor_changed.connect(func(on: bool) -> void: sim.solid_floor = on)
 	menu.solid_ceiling_changed.connect(func(on: bool) -> void: sim.solid_ceiling = on)
-	menu.spigot_element_changed.connect(func(i: int, e: int) -> void: spigots.elements[i] = e)
-	menu.spigot_size_changed.connect(func(i: int, s: int) -> void: spigots.sizes[i] = s)
 	menu.clear_pressed.connect(_on_clear)
 	menu.save_pressed.connect(func() -> void: sim.save_canvas())
 	menu.load_pressed.connect(_on_load)
@@ -128,14 +130,20 @@ func _layout(grid: Vector2i) -> void:
 
 
 # Centred horizontally and lifted clear of the bottom edge, so the panel
-# reads as floating above the simulation.
+# reads as floating above the simulation. Once the user has dragged it,
+# their placement is kept and only clamped back into view.
 func _position_menu() -> void:
 	var vp := get_viewport().get_visible_rect().size
 	var wanted := menu.get_combined_minimum_size()
 	menu.size = wanted
-	menu.position = Vector2(
-		round((vp.x - wanted.x) * 0.5),
-		vp.y - wanted.y - PANEL_MARGIN)
+	if menu.user_positioned:
+		menu.position = Vector2(
+			clampf(menu.position.x, 0.0, maxf(0.0, vp.x - wanted.x)),
+			clampf(menu.position.y, 0.0, maxf(0.0, vp.y - wanted.y)))
+	else:
+		menu.position = Vector2(
+			round((vp.x - wanted.x) * 0.5),
+			vp.y - wanted.y - PANEL_MARGIN)
 
 
 func _on_viewport_resized() -> void:
@@ -151,7 +159,6 @@ func _apply_grid_resize() -> void:
 		return
 	sim.resize(grid.x, grid.y)
 	particles.set_size(grid.x, grid.y)
-	spigots.set_width(grid.x)
 	_layout(grid)
 
 
@@ -177,7 +184,6 @@ func _process(delta: float) -> void:
 
 	var scramble := false
 	if ticks > 0:
-		spigots.update(sim)
 		var events := sim.take_events()
 		scramble = particles.handle_events(events, sim)
 		particles.update(sim)
@@ -215,6 +221,15 @@ func _parse_test_args() -> void:
 			demo = arg.get_slice("=", 1)
 		elif arg == "--test-saveload":
 			_test_saveload = true
+		elif arg == "--collapsed":
+			menu.set_collapsed(true)
+		elif arg.begins_with("--panel-at="):
+			# Exercises the same placement path a drag uses.
+			var pa := arg.get_slice("=", 1).split(",")
+			if pa.size() == 2:
+				menu.user_positioned = true
+				menu.position = Vector2(int(pa[0]), int(pa[1]))
+				_position_menu()
 		elif arg == "--hide-ui":
 			# The panel floats over the bottom of the canvas, so hiding it
 			# is the only way to inspect what is happening at the floor.
@@ -302,6 +317,18 @@ func _setup_demo(name: String) -> void:
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SEGMENT, 250, 420, 250, 420, 26)
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SQUARE, 630, 420, 630, 420, 26)
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SPRAY, 1010, 420, 1010, 420, 30)
+		"sources":
+			# Fixed emitters: water, sand, and fire acting as a torch
+			# over a plant field. Each should feed continuously without
+			# moving or being consumed.
+			sim.stamp_stroke(Elements.WATER, FallingSand.CMD_SEGMENT,
+				260, 140, 260, 140, 7, true, true)
+			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SEGMENT,
+				640, 140, 640, 140, 7, true, true)
+			# Fire rises, so the source sits just under the plants.
+			sim.stamp_rect(Elements.PLANT, 930, 340, 1120, 424, 100)
+			sim.stamp_stroke(Elements.FIRE, FallingSand.CMD_SEGMENT,
+				1010, 438, 1010, 438, 5, true, true)
 		"bounds":
 			# Sand heads for the floor, steam and methane for the ceiling.
 			sim.stamp_rect(Elements.SAND, 150, 60, 420, 190, 100)

@@ -14,7 +14,8 @@ layout(set = 0, binding = 0, r32ui) uniform restrict uimage2D grid;
 //             2 = dithered rect, 3 = square segment, 4 = spray segment
 //   [1] element id
 //   [2] flags: bit0 overwrite (else only paints BACKGROUND),
-//              bit1 never paint over WALL (tree strokes)
+//              bit1 never paint over WALL (tree strokes),
+//              bit2 paint as a source rather than loose material
 //   [3] x0  [4] y0  [5] x1  [6] y1
 //   [7] radius (circle/segment, in cells) or density 0-99 (rect)
 layout(set = 0, binding = 1, std430) restrict readonly buffer Commands {
@@ -30,6 +31,8 @@ layout(push_constant) uniform Params {
 
 const uint EL_BACKGROUND = 0u;
 const uint EL_WALL = 1u;
+// Bit 7 marks a cell as a fixed source of its own element.
+const uint EMITTER_BIT = 128u;
 
 uint pcg(uint v) {
 	v = v * 747796405u + 2891336453u;
@@ -56,6 +59,7 @@ void main() {
 
 	uint cell = imageLoad(grid, p).r;
 	uint elem = cell & 63u;
+	uint extra = cell & EMITTER_BIT;
 	bool changed = false;
 	vec2 pf = vec2(p) + vec2(0.5);
 
@@ -103,10 +107,11 @@ void main() {
 		if (skip_wall && elem == EL_WALL) continue;
 
 		elem = uint(stamp_elem);
+		extra = (flags & 4) != 0 ? EMITTER_BIT : 0u;
 		changed = true;
 	}
 
 	if (changed) {
-		imageStore(grid, p, uvec4(elem, 0u, 0u, 0u));
+		imageStore(grid, p, uvec4(elem | extra, 0u, 0u, 0u));
 	}
 }

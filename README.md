@@ -38,6 +38,22 @@ overwrite toggle), **Size** (brush radius, 1–64 cells), **Speed** (target tick
 second — 0 pauses — beside the measured rate), **Spigots**, and **Canvas**
 (Save / Load / Clear).
 
+**Click a material a second time to make it a source.** The chip's dot gains a
+ring, and strokes then lay down fixed emitters that feed that material
+continuously instead of dropping loose material — water once gives you water,
+water twice gives you a spring. Sources never move, never react and never burn
+away; only the eraser removes them, and fills stop at them rather than wiping them
+out. They render washed toward white so they read as fixtures. Anything that flows
+can be a source: powders, liquids, gases, and fire, which gives you a torch.
+
+This replaces the original's dedicated `SPOUT`, `WELL` and `TORCH` elements and the
+four fixed spigots along the top of the canvas, all of which are gone from the UI.
+Their simulation code is untouched, so a saved canvas containing them still behaves
+correctly, and `src/sim/spigots.gd` is left in the tree unused.
+
+The panel is **draggable** — grab any empty part of the card — and **collapsible**
+via the caret at its right, which shrinks it to just its header.
+
 `SOIL` is currently withheld from the palette. Its simulation is untouched — soil,
 wet soil and the trees they sprout all still run, and any already on the canvas
 behaves normally; it is only hidden from the picker. Restore it by adding `SOIL`
@@ -64,7 +80,11 @@ so a save taken at one size loads correctly at another.
 
 The grid lives in two ping-ponged `R32UI` storage textures. A cell's low 6 bits are
 its element id — the same 34 ids, in the same order, as the original's
-`elements.js`. Bit 6 is a "moved this tick" flag used by the movement passes.
+`elements.js`. Bit 6 is a "moved this tick" flag used by the movement passes, and
+bit 7 marks the cell as a source of its own element. Sources cost no extra memory
+and need no new element ids; the movement pass loads them as already-moved so
+nothing can shift or displace them, and the reaction pass rewrites every cell, so
+it is the one place the bit could be lost and the one place it is preserved.
 
 Every shader derives its bounds from `imageSize()`, so resizing needs no
 recompilation: `FallingSand.resize()` allocates new textures, blits the overlapping
@@ -141,15 +161,17 @@ godot --path . -- --demo=liquids --screenshot=out.png --frames=1200
 ```
 
 Demos: `sand`, `liquids`, `fire`, `boom`, `boom2`, `lava`, `tree`, `magic`,
-`stress`, `brushes` (the three stroke profiles) and `fillbox` (a divided container
-for testing fill). Add `--test-saveload` to exercise a save → clear → load round
+`stress`, `brushes` (the three stroke profiles), `fillbox` (a divided container for
+testing fill), `sources` (water, sand and fire emitters) and `bounds` (material
+heading for the floor and gas for the ceiling). Add `--test-saveload` to exercise a save → clear → load round
 trip, `--test-fill=x,y[,element]` to seed a bucket fill mid-run, and
 `--resize=1400x900,1700x1000` to drive one or more window resizes (spread through
 the first half of the frame budget).
 
-Also `--solid=floor,ceiling` to start with solid edges, and `--hide-ui` to drop the
-floating panel, which is the only way to see what is happening at the very bottom
-of the canvas.
+Also `--solid=floor,ceiling` to start with solid edges, `--hide-ui` to drop the
+floating panel (the only way to see what is happening at the very bottom of the
+canvas), `--collapsed` to start with the panel collapsed, and `--panel-at=x,y` to
+place it, which exercises the same path a drag does.
 
 The window renders uncapped, so `--frames=N` is *not* N simulation ticks; the
 screenshot log prints the actual tick count and the final grid size.

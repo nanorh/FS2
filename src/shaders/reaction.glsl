@@ -78,6 +78,8 @@ const uint EL_LEAF = 31u;
 const uint EL_POLLEN = 32u;
 const uint EL_CHARGED_NITRO = 33u;
 const uint EL_OOB = 63u;
+// Bit 7 marks a fixed source of its own element.
+const uint EMITTER_BIT = 128u;
 
 // Event types consumed by the CPU (see falling_sand.gd).
 const uint EV_NITRO = 1u;
@@ -165,6 +167,7 @@ const uint SALT_SPOUT = 85u;
 const uint SALT_WELL = 86u;
 const uint SALT_FIRERISE = 87u;
 const uint SALT_CNITRO = 88u;
+const uint SALT_EMIT = 89u;
 
 ivec2 grid_size;
 ivec2 P;
@@ -287,7 +290,19 @@ void main() {
 	P = ivec2(gl_GlobalInvocationID.xy);
 	if (P.x >= grid_size.x || P.y >= grid_size.y) return;
 
-	uint e = E(P);
+	uint raw = imageLoad(src_grid, P).r;
+	uint e = raw & 63u;
+
+	// A source is a fixed feature of the world: it never moves, never
+	// reacts, and never burns away. Only the eraser removes it. Emission
+	// itself is handled from the receiving background cell below, so
+	// there is nothing to do here but survive the pass with the bit
+	// intact - this is the only place it could be lost, since the
+	// reaction pass rewrites every cell.
+	if ((raw & EMITTER_BIT) != 0u) {
+		imageStore(dst_grid, P, uvec4(e | EMITTER_BIT, 0u, 0u, 0u));
+		return;
+	}
 
 	// Cache the 4-neighbourhood (most rules only need it).
 	uint n_dn = E(P + ivec2(0, 1));
@@ -372,6 +387,20 @@ void main() {
 		if (n_dn == EL_LAVA && rnd100_at(P + ivec2(0, 1), SALT_LAVAFIRE) < 6u) {
 			store(EL_FIRE); return;
 		}
+		// Sources fill bordering background with their own material.
+		// The roll is keyed to the source cell, so all four of its
+		// neighbours fill on the same tick, as doProducer did.
+		for (int i = 0; i < 4; i++) {
+			ivec2 q = P + DIR4[i];
+			if (!in_grid(q)) continue;
+			uint qraw = imageLoad(src_grid, q).r;
+			if ((qraw & EMITTER_BIT) != 0u) {
+				uint qe2 = qraw & 63u;
+				uint chance = qe2 == EL_FIRE ? 25u : 10u;
+				if (rnd100_at(q, SALT_EMIT) < chance) { store(qe2); return; }
+			}
+		}
+
 		// SPOUT / WELL producers fill bordering background.
 		for (int i = 0; i < 4; i++) {
 			ivec2 q = P + DIR4[i];
