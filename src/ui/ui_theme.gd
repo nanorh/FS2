@@ -167,9 +167,9 @@ static func style_ghost(b: Button, tint: Color) -> void:
 # with the element's own colour so the palette stays self-describing.
 static func style_swatch(b: Button, colour: Color) -> void:
 	b.focus_mode = Control.FOCUS_NONE
-	# Centred rather than left-aligned: chips stretch to fill the window,
-	# and a left-hugging label leaves a wide chip looking empty.
-	b.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Left-aligned so the colour dots line up down each column; the chips
+	# are a uniform fixed width, so centring would make the dots ragged.
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.clip_text = true
 	b.add_theme_font_size_override("font_size", 10)
 	b.add_theme_constant_override("h_separation", 6)

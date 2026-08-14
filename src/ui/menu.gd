@@ -28,9 +28,11 @@ const DEFAULT_RADIUS := 2
 
 # Fixed column count keeps the palette exactly two rows tall at every
 # window size, so the panel height never changes and cannot feed back
-# into the grid resize.
+# into the grid resize. Chips are a fixed width and the block is centred:
+# stretching them to the window only moves the empty space inside the
+# chips.
 const PALETTE_COLUMNS := 12
-const CHIP_MIN_WIDTH := 84
+const CHIP_WIDTH := 98
 
 var _size_label: Label
 var _speed_label: Label
@@ -76,7 +78,7 @@ func _build_palette() -> Control:
 	grid.columns = PALETTE_COLUMNS
 	grid.add_theme_constant_override("h_separation", 4)
 	grid.add_theme_constant_override("v_separation", 4)
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 
 	var group := ButtonGroup.new()
 	for elem in Elements.MENU_ITEMS:
@@ -87,9 +89,7 @@ func _build_palette() -> Control:
 		btn.button_group = group
 		btn.icon = UITheme.dot(colour, 9)
 		btn.tooltip_text = Elements.describe(elem)
-		btn.custom_minimum_size = Vector2(CHIP_MIN_WIDTH, 0)
-		# Chips share the spare width equally as the window widens.
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.custom_minimum_size = Vector2(CHIP_WIDTH, 0)
 		UITheme.style_swatch(btn, colour)
 		var e := elem
 		btn.pressed.connect(func() -> void: element_selected.emit(e))

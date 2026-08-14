@@ -31,9 +31,9 @@ Four tools:
 | Fill | Bucket: replaces the connected region of whatever you click on |
 
 The toolbar is two centred rows. On top, the **palette**: every material as a
-colour dot beside its name, stretching to fill the window so widening it grows the
-chips rather than leaving a gap. Hovering any element describes what it actually
-does in the simulation. Below, centred under it: **Tool** (the four tools and the
+colour dot beside its name, at a fixed chip size so the block stays compact and
+centred rather than stretching edge to edge. Hovering any element describes what it
+actually does in the simulation. Below, centred under it: **Tool** (the four tools and the
 overwrite toggle), **Size** (brush radius, 1–64 cells), **Speed** (target ticks per
 second — 0 pauses — beside the measured rate), **Spigots**, and **Canvas**
 (Save / Load / Clear).
