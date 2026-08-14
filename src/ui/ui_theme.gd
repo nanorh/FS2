@@ -235,11 +235,13 @@ static func style_slider(s: HSlider) -> void:
 
 
 static func style_panel(p: PanelContainer) -> void:
-	# The default panel stylebox is translucent, which lets the
-	# simulation show through once the grid meets the panel edge.
-	var sb := box(SURFACE, 0, 0, 0)
-	sb.border_width_top = 1
-	sb.border_color = BORDER
+	# A floating card: rounded on every side, lifted off the canvas by a
+	# soft drop shadow, and very slightly translucent so material moving
+	# behind it reads faintly rather than being cut off dead.
+	var sb := box(Color(SURFACE.r, SURFACE.g, SURFACE.b, 0.94), R_LG, 0, 0, 1, BORDER)
+	sb.shadow_size = 20
+	sb.shadow_offset = Vector2(0, 7)
+	sb.shadow_color = Color(0, 0, 0, 0.5)
 	p.add_theme_stylebox_override("panel", sb)
 
 

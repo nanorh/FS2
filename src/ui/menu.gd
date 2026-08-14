@@ -13,6 +13,8 @@ signal pen_size_changed(radius: int)
 signal mode_changed(mode: int)
 signal overwrite_changed(enabled: bool)
 signal speed_changed(fps: int)
+signal solid_floor_changed(enabled: bool)
+signal solid_ceiling_changed(enabled: bool)
 signal spigot_element_changed(index: int, elem: int)
 signal spigot_size_changed(index: int, size: int)
 signal clear_pressed
@@ -107,6 +109,7 @@ func _build_controls() -> Control:
 	row.add_child(_build_tools())
 	row.add_child(_build_size())
 	row.add_child(_build_speed())
+	row.add_child(_build_bounds())
 	row.add_child(_build_spigots())
 	row.add_child(_build_actions())
 	return row
@@ -206,6 +209,29 @@ func _refresh_speed_label() -> void:
 		_speed_label.text = "Speed  %d   ·   %d fps" % [_speed, _fps]
 	_speed_label.add_theme_color_override("font_color",
 		UITheme.TEXT_FAINT if _speed == 0 or _fps < _speed - 6 else UITheme.ACCENT)
+
+
+func _build_bounds() -> Control:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+
+	var ceiling := Button.new()
+	ceiling.text = "Ceiling"
+	ceiling.toggle_mode = true
+	ceiling.tooltip_text = "Solid ceiling\nGases collect against the top edge instead of escaping."
+	UITheme.style_ghost(ceiling, UITheme.ACCENT)
+	ceiling.toggled.connect(func(on: bool) -> void: solid_ceiling_changed.emit(on))
+	col.add_child(ceiling)
+
+	var floor_btn := Button.new()
+	floor_btn.text = "Floor"
+	floor_btn.toggle_mode = true
+	floor_btn.tooltip_text = "Solid floor\nMaterial piles up on the bottom edge instead of falling away."
+	UITheme.style_ghost(floor_btn, UITheme.ACCENT)
+	floor_btn.toggled.connect(func(on: bool) -> void: solid_floor_changed.emit(on))
+	col.add_child(floor_btn)
+
+	return _column(UITheme.caption("Solid"), col)
 
 
 func _build_spigots() -> Control:

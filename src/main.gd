@@ -18,6 +18,9 @@ var menu_height := 128
 # settle rather than reallocating on every resize event.
 const RESIZE_SETTLE_SEC := 0.15
 
+# Gap between the floating panel and the bottom of the window.
+const PANEL_MARGIN := 18
+
 var sim: FallingSand
 var particles: SandParticles
 var spigots: Spigots
@@ -49,11 +52,11 @@ func _ready() -> void:
 	add_child(menu)
 	var menu_min := menu.get_combined_minimum_size()
 	menu_height = maxi(int(ceil(menu_min.y)), 80)
-	# Never let the window get narrow enough, or the strip too short, to
-	# clip the control panel.
+	# Keep the window large enough that the floating panel always fits
+	# with its margins, and that some canvas remains visible above it.
 	DisplayServer.window_set_min_size(Vector2i(
-		maxi(int(ceil(menu_min.x)), 640),
-		menu_height + 160))
+		maxi(int(ceil(menu_min.x)) + PANEL_MARGIN * 2, 640),
+		menu_height + PANEL_MARGIN + 200))
 
 	var grid := _grid_size_for_window()
 
@@ -96,6 +99,8 @@ func _ready() -> void:
 	menu.mode_changed.connect(func(m: int) -> void: brush.mode = m)
 	menu.overwrite_changed.connect(func(on: bool) -> void: brush.overwrite = on)
 	menu.speed_changed.connect(func(fps: int) -> void: fps_setting = fps)
+	menu.solid_floor_changed.connect(func(on: bool) -> void: sim.solid_floor = on)
+	menu.solid_ceiling_changed.connect(func(on: bool) -> void: sim.solid_ceiling = on)
 	menu.spigot_element_changed.connect(func(i: int, e: int) -> void: spigots.elements[i] = e)
 	menu.spigot_size_changed.connect(func(i: int, s: int) -> void: spigots.sizes[i] = s)
 	menu.clear_pressed.connect(_on_clear)
@@ -105,30 +110,38 @@ func _ready() -> void:
 	_parse_test_args()
 
 
-# The grid fills the window above the control panel, one cell per pixel.
+# The grid fills the whole window, one cell per pixel. The control panel
+# floats over the bottom of it rather than taking a slice out.
 func _grid_size_for_window() -> Vector2i:
 	var vp := get_viewport().get_visible_rect().size
 	return Vector2i(
 		maxi(int(vp.x), FallingSand.MIN_DIM),
-		maxi(int(vp.y) - menu_height, FallingSand.MIN_DIM))
+		maxi(int(vp.y), FallingSand.MIN_DIM))
 
 
 func _layout(grid: Vector2i) -> void:
-	var vp := get_viewport().get_visible_rect().size
 	view.position = Vector2.ZERO
 	view.size = Vector2(grid)
 	brush.position = Vector2.ZERO
 	brush.size = Vector2(grid)
-	menu.position = Vector2(0, vp.y - menu_height)
-	menu.size = Vector2(vp.x, menu_height)
+	_position_menu()
+
+
+# Centred horizontally and lifted clear of the bottom edge, so the panel
+# reads as floating above the simulation.
+func _position_menu() -> void:
+	var vp := get_viewport().get_visible_rect().size
+	var wanted := menu.get_combined_minimum_size()
+	menu.size = wanted
+	menu.position = Vector2(
+		round((vp.x - wanted.x) * 0.5),
+		vp.y - wanted.y - PANEL_MARGIN)
 
 
 func _on_viewport_resized() -> void:
-	# Keep the panel glued to the bottom edge straight away; defer the
-	# expensive grid reallocation until the drag stops.
-	var vp := get_viewport().get_visible_rect().size
-	menu.position = Vector2(0, vp.y - menu_height)
-	menu.size = Vector2(vp.x, menu_height)
+	# Reposition the panel straight away; defer the expensive grid
+	# reallocation until the drag stops.
+	_position_menu()
 	_resize_timer.start()
 
 
@@ -202,6 +215,16 @@ func _parse_test_args() -> void:
 			demo = arg.get_slice("=", 1)
 		elif arg == "--test-saveload":
 			_test_saveload = true
+		elif arg == "--hide-ui":
+			# The panel floats over the bottom of the canvas, so hiding it
+			# is the only way to inspect what is happening at the floor.
+			menu.visible = false
+		elif arg.begins_with("--solid="):
+			for part in arg.get_slice("=", 1).split(","):
+				if part == "floor":
+					sim.solid_floor = true
+				elif part == "ceiling":
+					sim.solid_ceiling = true
 		elif arg.begins_with("--test-fill="):
 			var f := arg.get_slice("=", 1).split(",")
 			if f.size() >= 2:
@@ -279,6 +302,11 @@ func _setup_demo(name: String) -> void:
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SEGMENT, 250, 420, 250, 420, 26)
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SQUARE, 630, 420, 630, 420, 26)
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SPRAY, 1010, 420, 1010, 420, 30)
+		"bounds":
+			# Sand heads for the floor, steam and methane for the ceiling.
+			sim.stamp_rect(Elements.SAND, 150, 60, 420, 190, 100)
+			sim.stamp_rect(Elements.STEAM, 700, 430, 900, 560, 100)
+			sim.stamp_rect(Elements.METHANE, 980, 430, 1150, 560, 100)
 		"fillbox":
 			# Closed container: a fill seeded inside must stay inside.
 			sim.stamp_stroke(Elements.WALL, FallingSand.CMD_SEGMENT, 300, 260, 900, 260, 4)
@@ -323,5 +351,6 @@ func _handle_test_hooks() -> void:
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(_screenshot_path)
 		print("screenshot saved: ", _screenshot_path, " ticks=", sim._tick,
-			" grid=", sim.width, "x", sim.height)
+			" grid=", sim.width, "x", sim.height,
+			" solid_floor=", sim.solid_floor, " solid_ceiling=", sim.solid_ceiling)
 		get_tree().quit()

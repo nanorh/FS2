@@ -33,10 +33,15 @@ layout(set = 0, binding = 2, std430) restrict buffer Events {
 
 layout(push_constant) uniform Params {
 	uint tick;
-	uint flags; // bit0: magic particles active (evaporates MYSTERY)
+	uint flags;
 	uint pad0;
 	uint pad1;
 } params;
+
+// flags bits
+const uint FLAG_MAGIC = 1u;          // magic particles active (evaporates MYSTERY)
+const uint FLAG_SOLID_FLOOR = 2u;    // material piles on the bottom row
+const uint FLAG_SOLID_CEILING = 4u;  // gases collect against the top row
 
 const uint EL_BACKGROUND = 0u;
 const uint EL_WALL = 1u;
@@ -334,8 +339,9 @@ void main() {
 		}
 	}
 
-	// doGravity falling off the bottom edge deletes the element.
-	if (P.y == grid_size.y - 1) {
+	// doGravity falling off the bottom edge deletes the element, unless
+	// the floor is solid, in which case material simply piles up.
+	if (P.y == grid_size.y - 1 && (params.flags & FLAG_SOLID_FLOOR) == 0u) {
 		uint gc = grav_chance(e);
 		if (gc > 0u && rnd100_at(P, SALT_GRAV) < gc) {
 			store(EL_BACKGROUND);
@@ -343,8 +349,10 @@ void main() {
 		}
 	}
 
-	// doRise off the top edge deletes gases.
-	if (P.y == 0 && (e == EL_STEAM || e == EL_METHANE)) {
+	// doRise off the top edge deletes gases, unless the ceiling is
+	// solid, in which case they collect against it.
+	if (P.y == 0 && (params.flags & FLAG_SOLID_CEILING) == 0u
+			&& (e == EL_STEAM || e == EL_METHANE)) {
 		uint rc = e == EL_STEAM ? 70u : 25u;
 		if (rnd100_at(P, SALT_RISE) < rc) {
 			store(EL_BACKGROUND);

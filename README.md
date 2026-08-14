@@ -43,6 +43,16 @@ wet soil and the trees they sprout all still run, and any already on the canvas
 behaves normally; it is only hidden from the picker. Restore it by adding `SOIL`
 back to `MENU_ITEMS` in `src/sim/elements.gd`.
 
+**Solid** toggles what the edges of the world do. By default material that falls off
+the bottom is discarded and gas that rises off the top escapes, as in the original.
+Turn on **Floor** and material piles up against the bottom instead; turn on
+**Ceiling** and gases collect against the top rather than venting away.
+
+The control panel floats over the canvas rather than taking a slice out of it, so
+the grid fills the whole window. It is slightly translucent, which keeps material
+moving behind it readable instead of cut off dead — though note the strip behind
+the panel is otherwise hidden, which matters most with a solid floor.
+
 Resize the window and the grid grows or shrinks with it — you get more world, not
 a scaled-up picture. Existing contents are anchored to the **bottom-left**, so
 whatever was resting on the floor stays on the floor; growing reveals empty space
@@ -137,8 +147,17 @@ trip, `--test-fill=x,y[,element]` to seed a bucket fill mid-run, and
 `--resize=1400x900,1700x1000` to drive one or more window resizes (spread through
 the first half of the frame budget).
 
+Also `--solid=floor,ceiling` to start with solid edges, and `--hide-ui` to drop the
+floating panel, which is the only way to see what is happening at the very bottom
+of the canvas.
+
 The window renders uncapped, so `--frames=N` is *not* N simulation ticks; the
 screenshot log prints the actual tick count and the final grid size.
+
+**After editing any `.glsl`, run `godot --headless --path . --import` before
+testing.** Running the project directly does not reliably reimport a changed
+shader, and the stale SPIR-V is used silently — a shader change that appears to
+have no effect is usually this rather than a logic error.
 
 ## Known deviations from the original
 

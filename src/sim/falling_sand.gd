@@ -101,6 +101,12 @@ var _pending_events: Array[Vector4i] = []
 
 var _has_saved_state := false
 
+# Boundary behaviour. Off, material that falls off the bottom (or gas
+# that rises off the top) is discarded, as in the original. On, the edge
+# acts as a solid surface and material collects against it.
+var solid_floor := false
+var solid_ceiling := false
+
 var _rng := RandomNumberGenerator.new()
 
 # Display textures replaced by a resize. Texture2DRD does not take
@@ -174,8 +180,12 @@ func step(ticks: int, magic_active: bool, do_scramble: bool) -> void:
 	var count := _staged_count
 	_staged_cmds.clear()
 	_staged_count = 0
+	# Snapshot the flags here so the render thread sees a consistent set.
+	var flags := (1 if magic_active else 0) \
+		| (2 if solid_floor else 0) \
+		| (4 if solid_ceiling else 0)
 	RenderingServer.call_on_render_thread(
-		_gpu_frame.bind(cmds, count, ticks, magic_active, do_scramble))
+		_gpu_frame.bind(cmds, count, ticks, flags, do_scramble))
 
 
 func take_events() -> Array[Vector4i]:
@@ -439,7 +449,7 @@ func _push_constant_ints(a: int, b: int, c: int, d: int) -> PackedByteArray:
 	return pc
 
 
-func _gpu_frame(cmds: PackedInt32Array, cmd_count: int, ticks: int, magic_active: bool, do_scramble: bool) -> void:
+func _gpu_frame(cmds: PackedInt32Array, cmd_count: int, ticks: int, flags: int, do_scramble: bool) -> void:
 	if not _gpu_ready:
 		return
 
@@ -490,7 +500,7 @@ func _gpu_frame(cmds: PackedInt32Array, cmd_count: int, ticks: int, magic_active
 		# 2. Reaction pass: src = _cur, dst = 1 - _cur.
 		_rd.compute_list_bind_compute_pipeline(cl, _reaction_pipeline)
 		_rd.compute_list_bind_uniform_set(cl, _reaction_sets[_cur], 0)
-		var pc1 := _push_constant_ints(_tick, 1 if magic_active else 0, 0, 0)
+		var pc1 := _push_constant_ints(_tick, flags, 0, 0)
 		_rd.compute_list_set_push_constant(cl, pc1, pc1.size())
 		_rd.compute_list_dispatch(cl, groups_x, groups_y, 1)
 		_rd.compute_list_add_barrier(cl)
