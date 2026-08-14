@@ -1,4 +1,4 @@
-# Game root: wires the sim, display, brush, particles, spigots and menu
+﻿# Game root: wires the sim, display, brush, particles, spigots and menu
 # together and drives the fixed-rate tick loop (frameDebt accumulator,
 # like game.js mainLoop).
 extends Control
@@ -6,10 +6,13 @@ extends Control
 const MAX_FRAME_DEBT := 5.0
 const MAX_TICKS_PER_FRAME := 5
 
-# Height reserved for the control panel; the grid gets everything above it.
-# project.godot's default viewport height is this plus 720, so a fresh
-# window still starts at the reference 1280x720 grid.
-const MENU_HEIGHT := 96
+# Height reserved for the control panel; the grid gets everything above
+# it. Measured from the panel's own content rather than hard-coded, so
+# editing the toolbar can't silently clip it. The palette's column count
+# is fixed, so this does not vary with window width and cannot feed back
+# into the grid resize. project.godot's default viewport height is this
+# plus 720, so a fresh window starts at the reference 1280x720 grid.
+var menu_height := 128
 
 # Rebuilding the grid textures is not free, so wait for the drag to
 # settle rather than reallocating on every resize event.
@@ -40,6 +43,18 @@ var _resize_timer: Timer
 
 
 func _ready() -> void:
+	# The panel is built first because its measured height determines how
+	# much of the window is left for the grid.
+	menu = SandMenu.new()
+	add_child(menu)
+	var menu_min := menu.get_combined_minimum_size()
+	menu_height = maxi(int(ceil(menu_min.y)), 80)
+	# Never let the window get narrow enough, or the strip too short, to
+	# clip the control panel.
+	DisplayServer.window_set_min_size(Vector2i(
+		maxi(int(ceil(menu_min.x)), 640),
+		menu_height + 160))
+
 	var grid := _grid_size_for_window()
 
 	sim = FallingSand.new()
@@ -64,14 +79,8 @@ func _ready() -> void:
 	brush.sim = sim
 	add_child(brush)
 
-	menu = SandMenu.new()
-	add_child(menu)
-
-	# Never let the window get narrow enough to clip the control panel.
-	var menu_min := menu.get_combined_minimum_size()
-	DisplayServer.window_set_min_size(Vector2i(
-		maxi(int(ceil(menu_min.x)), 640),
-		MENU_HEIGHT + 160))
+	# The panel was added before the canvas, so lift it back on top.
+	menu.move_to_front()
 
 	_resize_timer = Timer.new()
 	_resize_timer.one_shot = true
@@ -101,7 +110,7 @@ func _grid_size_for_window() -> Vector2i:
 	var vp := get_viewport().get_visible_rect().size
 	return Vector2i(
 		maxi(int(vp.x), FallingSand.MIN_DIM),
-		maxi(int(vp.y) - MENU_HEIGHT, FallingSand.MIN_DIM))
+		maxi(int(vp.y) - menu_height, FallingSand.MIN_DIM))
 
 
 func _layout(grid: Vector2i) -> void:
@@ -110,16 +119,16 @@ func _layout(grid: Vector2i) -> void:
 	view.size = Vector2(grid)
 	brush.position = Vector2.ZERO
 	brush.size = Vector2(grid)
-	menu.position = Vector2(0, vp.y - MENU_HEIGHT)
-	menu.size = Vector2(vp.x, MENU_HEIGHT)
+	menu.position = Vector2(0, vp.y - menu_height)
+	menu.size = Vector2(vp.x, menu_height)
 
 
 func _on_viewport_resized() -> void:
 	# Keep the panel glued to the bottom edge straight away; defer the
 	# expensive grid reallocation until the drag stops.
 	var vp := get_viewport().get_visible_rect().size
-	menu.position = Vector2(0, vp.y - MENU_HEIGHT)
-	menu.size = Vector2(vp.x, MENU_HEIGHT)
+	menu.position = Vector2(0, vp.y - menu_height)
+	menu.size = Vector2(vp.x, menu_height)
 	_resize_timer.start()
 
 

@@ -80,14 +80,19 @@ static var COLORS := PackedColorArray([
 	Color8(245, 98, 78),    # CHARGED_NITRO
 ])
 
-# Elements shown in the drawing menu, in original menu order.
+# Elements offered in the drawing palette, in original menu order.
+#
+# SOIL is temporarily withheld from the palette. Its simulation is
+# untouched - SOIL, WET_SOIL and the tree growth they seed all still run,
+# and anything already on the canvas keeps behaving normally. Restore it
+# by putting SOIL back in this list.
 static var MENU_ITEMS: Array[int] = [
 	WALL, SAND, WATER, PLANT,
 	FIRE, SPOUT, WELL, SALT,
 	OIL, WAX, TORCH, ICE,
 	GUNPOWDER, NAPALM, NITRO, C4,
 	LAVA, CRYO, FUSE, MYSTERY,
-	CONCRETE, METHANE, SOIL, BACKGROUND,
+	CONCRETE, METHANE, BACKGROUND,
 ]
 
 static var MENU_NAMES := {
@@ -97,6 +102,35 @@ static var MENU_NAMES := {
 	NITRO: "NITRO", NAPALM: "NAPALM", C4: "C-4", CONCRETE: "CONCRETE",
 	BACKGROUND: "ERASER", FUSE: "FUSE", ICE: "ICE", LAVA: "LAVA",
 	METHANE: "METHANE", CRYO: "CRYO", MYSTERY: "???", SOIL: "SOIL",
+}
+
+# Shown on hover. Each line describes what the element actually does in
+# the simulation, not just what it is.
+static var DESCRIPTIONS := {
+	WALL: "Immovable barrier. Lava melts it slowly; concrete hardens against it.",
+	SAND: "Falls and piles up. Sinks through water and salt water.",
+	WATER: "Flows and finds its level. Boils to steam near fire or lava, freezes near cryo.",
+	PLANT: "Creeps through water and spreads. Burns easily; salt kills it.",
+	FIRE: "Spreads through plant, fuse, oil and wax. Water quenches it; it dies without fuel.",
+	SPOUT: "Fixed source. Emits water continuously, and condenses steam back to water.",
+	WELL: "Fixed source. Emits oil continuously.",
+	SALT: "Falls and piles. Dissolves into water to make salt water, kills plants, melts ice.",
+	OIL: "Floats on water. Catches fire readily and burns hard.",
+	WAX: "Static solid. Fire melts it into droplets that run and set again where they land.",
+	TORCH: "Fixed source. Emits fire continuously.",
+	ICE: "Melts to water near fire, lava, steam, salt or salt water.",
+	GUNPOWDER: "Falls. Detonates on contact with fire and chains through nearby grains.",
+	NAPALM: "Falls. Erupts into clinging fireballs when lit.",
+	NITRO: "Falls and sinks through liquids. Detonates violently on contact with fire.",
+	C4: "Static charge. Blows a wide crater when lit.",
+	LAVA: "Flows and burns almost anything. Sets to rock on contact with water.",
+	CRYO: "Falls and freezes what it touches into chilled ice. Quenches lava to rock.",
+	FUSE: "Static. Carries fire quickly along its length.",
+	MYSTERY: "Unstable. Reacts unpredictably with sand, salt, pollen and fire.",
+	CONCRETE: "Falls, then sets into wall - faster where it settles against existing wall.",
+	METHANE: "Rises as a gas. Explodes on contact with fire. Seeps from rock that touches oil.",
+	SOIL: "Absorbs water to become wet soil, which can sprout a tree.",
+	BACKGROUND: "Eraser. Removes whatever you paint over.",
 }
 
 # Menu text colors for elements whose in-game color has poor contrast.
@@ -118,3 +152,10 @@ static func menu_color(elem: int) -> Color:
 	if MENU_ALT_COLORS.has(elem):
 		return MENU_ALT_COLORS[elem]
 	return COLORS[elem]
+
+
+# Tooltip text: the name, then what it does.
+static func describe(elem: int) -> String:
+	var name: String = MENU_NAMES.get(elem, "?")
+	var body: String = DESCRIPTIONS.get(elem, "")
+	return name if body.is_empty() else "%s\n%s" % [name, body]

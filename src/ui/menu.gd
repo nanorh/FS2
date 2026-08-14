@@ -1,10 +1,10 @@
 # Control panel: element palette, tools, brush size, simulation speed,
 # spigot configuration and canvas actions.
 #
-# Deliberately spare: the palette is bare colour tiles (names live in the
-# tooltip and in the heading, which tracks the selection), sections are
-# separated by whitespace rather than rules, and every readout doubles as
-# its own label so nothing is stated twice.
+# Two centred rows. The palette on top stretches to the full width, so
+# widening the window makes the chips grow rather than leaving a gap at
+# the right; the controls below stay centred under it. Hovering any
+# element describes what it does.
 class_name SandMenu
 extends PanelContainer
 
@@ -26,10 +26,12 @@ const MIN_RADIUS := 1
 const MAX_RADIUS := 64
 const DEFAULT_RADIUS := 2
 
-const SWATCH_COLUMNS := 12
-const SWATCH_SIZE := 20
+# Fixed column count keeps the palette exactly two rows tall at every
+# window size, so the panel height never changes and cannot feed back
+# into the grid resize.
+const PALETTE_COLUMNS := 12
+const CHIP_MIN_WIDTH := 84
 
-var _element_label: Label
 var _size_label: Label
 var _speed_label: Label
 var _fps := 0
@@ -42,20 +44,16 @@ func _ready() -> void:
 	var root := MarginContainer.new()
 	root.add_theme_constant_override("margin_left", 16)
 	root.add_theme_constant_override("margin_right", 16)
-	root.add_theme_constant_override("margin_top", 9)
-	root.add_theme_constant_override("margin_bottom", 9)
+	root.add_theme_constant_override("margin_top", 10)
+	root.add_theme_constant_override("margin_bottom", 10)
 	add_child(root)
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 26)
-	root.add_child(row)
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 10)
+	root.add_child(rows)
 
-	row.add_child(_build_palette())
-	row.add_child(_build_tools())
-	row.add_child(_build_size())
-	row.add_child(_build_speed())
-	row.add_child(_build_spigots())
-	row.add_child(_build_actions())
+	rows.add_child(_build_palette())
+	rows.add_child(_build_controls())
 
 
 func set_fps_text(fps: int) -> void:
@@ -63,10 +61,10 @@ func set_fps_text(fps: int) -> void:
 	_refresh_speed_label()
 
 
-# A column with a small heading above its content.
+# A control with a small heading above it.
 func _column(heading: Label, content: Control) -> Control:
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
+	col.add_theme_constant_override("separation", 5)
 	col.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	col.add_child(heading)
 	col.add_child(content)
@@ -74,31 +72,44 @@ func _column(heading: Label, content: Control) -> Control:
 
 
 func _build_palette() -> Control:
-	_element_label = UITheme.caption(Elements.MENU_NAMES[Elements.WALL])
-	_element_label.add_theme_color_override("font_color", UITheme.TEXT)
-
 	var grid := GridContainer.new()
-	grid.columns = SWATCH_COLUMNS
-	grid.add_theme_constant_override("h_separation", 3)
-	grid.add_theme_constant_override("v_separation", 3)
+	grid.columns = PALETTE_COLUMNS
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var group := ButtonGroup.new()
 	for elem in Elements.MENU_ITEMS:
+		var colour: Color = Elements.menu_color(elem)
 		var btn := Button.new()
+		btn.text = Elements.MENU_NAMES[elem]
 		btn.toggle_mode = true
 		btn.button_group = group
-		btn.custom_minimum_size = Vector2(SWATCH_SIZE, SWATCH_SIZE)
-		btn.tooltip_text = Elements.MENU_NAMES[elem]
-		UITheme.style_swatch(btn, Elements.COLORS[elem], elem == Elements.BACKGROUND)
+		btn.icon = UITheme.dot(colour, 9)
+		btn.tooltip_text = Elements.describe(elem)
+		btn.custom_minimum_size = Vector2(CHIP_MIN_WIDTH, 0)
+		# Chips share the spare width equally as the window widens.
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		UITheme.style_swatch(btn, colour)
 		var e := elem
-		btn.pressed.connect(func() -> void:
-			_element_label.text = Elements.MENU_NAMES[e].to_upper()
-			element_selected.emit(e))
+		btn.pressed.connect(func() -> void: element_selected.emit(e))
 		grid.add_child(btn)
 		if elem == Elements.WALL:
 			btn.button_pressed = true
 
-	return _column(_element_label, grid)
+	return grid
+
+
+func _build_controls() -> Control:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 26)
+	row.add_child(_build_tools())
+	row.add_child(_build_size())
+	row.add_child(_build_speed())
+	row.add_child(_build_spigots())
+	row.add_child(_build_actions())
+	return row
 
 
 func _build_tools() -> Control:
@@ -107,17 +118,21 @@ func _build_tools() -> Control:
 
 	var group := ButtonGroup.new()
 	var tools := [
-		[Brush.MODE_CIRCLE, UITheme.GLYPH_CIRCLE, "Round brush"],
-		[Brush.MODE_SQUARE, UITheme.GLYPH_SQUARE, "Square brush"],
-		[Brush.MODE_SPRAY, UITheme.GLYPH_SPRAY, "Spray"],
-		[Brush.MODE_FILL, UITheme.GLYPH_FILL, "Fill connected area"],
+		[Brush.MODE_CIRCLE, UITheme.GLYPH_CIRCLE, "Round brush",
+			"Draws a capsule stroke with rounded ends."],
+		[Brush.MODE_SQUARE, UITheme.GLYPH_SQUARE, "Square brush",
+			"Draws with a square profile, for straight edges and blocks."],
+		[Brush.MODE_SPRAY, UITheme.GLYPH_SPRAY, "Spray",
+			"Scatters material, densest at the centre and thinning outward."],
+		[Brush.MODE_FILL, UITheme.GLYPH_FILL, "Fill",
+			"Replaces the whole connected region you click on."],
 	]
 	for t in tools:
 		var btn := Button.new()
 		btn.toggle_mode = true
 		btn.button_group = group
 		btn.custom_minimum_size = Vector2(28, 28)
-		btn.tooltip_text = t[2]
+		btn.tooltip_text = "%s\n%s" % [t[2], t[3]]
 		btn.icon = UITheme.glyph(t[1], 16, Color.WHITE)
 		UITheme.style_tool(btn)
 		var mode: int = t[0]
@@ -130,15 +145,12 @@ func _build_tools() -> Control:
 	overwrite.text = "Overwrite"
 	overwrite.toggle_mode = true
 	overwrite.button_pressed = true
-	overwrite.tooltip_text = "Draw over existing material instead of only empty space"
+	overwrite.tooltip_text = "Overwrite\nDraw over existing material instead of only empty space."
 	UITheme.style_ghost(overwrite, UITheme.ACCENT)
 	overwrite.toggled.connect(func(on: bool) -> void: overwrite_changed.emit(on))
+	bar.add_child(overwrite)
 
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 4)
-	col.add_child(bar)
-	col.add_child(overwrite)
-	return _column(UITheme.caption("Tool"), col)
+	return _column(UITheme.caption("Tool"), bar)
 
 
 func _build_size() -> Control:
@@ -212,6 +224,7 @@ func _build_spigots() -> Control:
 			type_btn.add_item(Elements.MENU_NAMES[Elements.SPIGOT_OPTIONS[k]], k)
 		type_btn.select(i) # spigot i defaults to option i, as in the original
 		type_btn.custom_minimum_size = Vector2(96, 0)
+		type_btn.tooltip_text = "Spigot %d material" % (i + 1)
 		UITheme.style_option(type_btn)
 		type_btn.item_selected.connect(func(opt: int) -> void:
 			spigot_element_changed.emit(idx, Elements.SPIGOT_OPTIONS[opt]))
@@ -222,7 +235,7 @@ func _build_spigots() -> Control:
 			size_btn.add_item(str(k), k)
 		size_btn.select(Spigots.DEFAULT_SIZE_IDX)
 		size_btn.custom_minimum_size = Vector2(40, 0)
-		size_btn.tooltip_text = "Spigot %d width" % (i + 1)
+		size_btn.tooltip_text = "Spigot %d width (0 turns it off)" % (i + 1)
 		UITheme.style_option(size_btn)
 		size_btn.item_selected.connect(func(opt: int) -> void:
 			spigot_size_changed.emit(idx, Spigots.SIZE_OPTIONS[opt]))
@@ -239,18 +252,21 @@ func _build_actions() -> Control:
 
 	var save := Button.new()
 	save.text = "Save"
+	save.tooltip_text = "Save\nStore a snapshot of the canvas."
 	UITheme.style_ghost(save, UITheme.ACCENT)
 	save.pressed.connect(func() -> void: save_pressed.emit())
 	bar.add_child(save)
 
 	var load_btn := Button.new()
 	load_btn.text = "Load"
+	load_btn.tooltip_text = "Load\nRestore the last saved snapshot."
 	UITheme.style_ghost(load_btn, UITheme.ACCENT)
 	load_btn.pressed.connect(func() -> void: load_pressed.emit())
 	bar.add_child(load_btn)
 
 	var clear := Button.new()
 	clear.text = "Clear"
+	clear.tooltip_text = "Clear\nEmpty the canvas."
 	UITheme.style_ghost(clear, UITheme.DANGER)
 	clear.pressed.connect(func() -> void: clear_pressed.emit())
 	bar.add_child(clear)

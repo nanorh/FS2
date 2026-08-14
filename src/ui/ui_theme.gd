@@ -163,24 +163,25 @@ static func style_ghost(b: Button, tint: Color) -> void:
 	b.add_theme_color_override("font_pressed_color", tint.lightened(0.3))
 
 
-# Element swatch: a bare colour tile. The name lives in the tooltip and
-# in the palette's heading, which keeps the grid free of text.
-static func style_swatch(b: Button, colour: Color, is_empty := false) -> void:
+# Element chip: a colour dot beside the name. Selected chips are tinted
+# with the element's own colour so the palette stays self-describing.
+static func style_swatch(b: Button, colour: Color) -> void:
 	b.focus_mode = Control.FOCUS_NONE
-	var fill := colour
-	var rest_border := 0
-	var rest_border_c := Color(0, 0, 0, 0)
-	if is_empty:
-		# The eraser paints BACKGROUND, whose colour is black; show it as
-		# an outlined hole instead of an invisible tile.
-		fill = SUNKEN
-		rest_border = 1
-		rest_border_c = TEXT_FAINT
-	b.add_theme_stylebox_override("normal", box(fill, 4, 0, 0, rest_border, rest_border_c))
-	b.add_theme_stylebox_override("hover",
-		box(fill.lightened(0.12) if not is_empty else RAISED_HOVER, 4, 0, 0, 1, TEXT_DIM))
-	b.add_theme_stylebox_override("pressed", box(fill, 4, 0, 0, 2, TEXT))
+	# Centred rather than left-aligned: chips stretch to fill the window,
+	# and a left-hugging label leaves a wide chip looking empty.
+	b.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.clip_text = true
+	b.add_theme_font_size_override("font_size", 10)
+	b.add_theme_constant_override("h_separation", 6)
+	b.add_theme_stylebox_override("normal", box(RAISED, R_SM, 8, 4))
+	b.add_theme_stylebox_override("hover", box(RAISED_HOVER, R_SM, 8, 4))
+	b.add_theme_stylebox_override("pressed",
+		box(Color(colour.r, colour.g, colour.b, 0.20), R_SM, 8, 4, 1,
+			Color(colour.r, colour.g, colour.b, 0.9)))
 	b.add_theme_stylebox_override("focus", empty_box())
+	b.add_theme_color_override("font_color", TEXT_DIM)
+	b.add_theme_color_override("font_hover_color", TEXT)
+	b.add_theme_color_override("font_pressed_color", colour.lightened(0.45))
 
 
 # Square icon button for the tool row.

@@ -30,11 +30,18 @@ Four tools:
 | Spray | Scattered spatter, densest at the centre and thinning toward the rim |
 | Fill | Bucket: replaces the connected region of whatever you click on |
 
-The toolbar is grouped into the **palette** (24 bare colour tiles; the heading
-names the current selection and each tile has a tooltip), **Tool** (the four tools
-plus the overwrite toggle), **Size** (brush radius, 1–64 cells), **Speed** (target
-ticks per second — 0 pauses — beside the measured rate), **Spigots**, and
-**Canvas** (Save / Load / Clear).
+The toolbar is two centred rows. On top, the **palette**: every material as a
+colour dot beside its name, stretching to fill the window so widening it grows the
+chips rather than leaving a gap. Hovering any element describes what it actually
+does in the simulation. Below, centred under it: **Tool** (the four tools and the
+overwrite toggle), **Size** (brush radius, 1–64 cells), **Speed** (target ticks per
+second — 0 pauses — beside the measured rate), **Spigots**, and **Canvas**
+(Save / Load / Clear).
+
+`SOIL` is currently withheld from the palette. Its simulation is untouched — soil,
+wet soil and the trees they sprout all still run, and any already on the canvas
+behaves normally; it is only hidden from the picker. Restore it by adding `SOIL`
+back to `MENU_ITEMS` in `src/sim/elements.gd`.
 
 Resize the window and the grid grows or shrinks with it — you get more world, not
 a scaled-up picture. Existing contents are anchored to the **bottom-left**, so

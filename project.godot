@@ -12,11 +12,12 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 [display]
 
-; Viewport height is the default 720-cell grid plus the 96px control panel.
+; Viewport height is the default 720-cell grid plus the control panel,
+; whose height main.gd measures from its own content (143px as built).
 ; Stretch is disabled so the viewport tracks the window pixel-for-pixel and
 ; the simulation grid can grow with it.
 window/size/viewport_width=1280
-window/size/viewport_height=816
+window/size/viewport_height=863
 window/size/resizable=true
 window/stretch/mode="disabled"
 
