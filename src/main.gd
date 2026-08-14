@@ -9,7 +9,7 @@ const MAX_TICKS_PER_FRAME := 5
 # Height reserved for the control panel; the grid gets everything above it.
 # project.godot's default viewport height is this plus 720, so a fresh
 # window still starts at the reference 1280x720 grid.
-const MENU_HEIGHT := 156
+const MENU_HEIGHT := 96
 
 # Rebuilding the grid textures is not free, so wait for the drag to
 # settle rather than reallocating on every resize event.
@@ -33,6 +33,8 @@ var _screenshot_frames := 180
 var _frame_count := 0
 var _test_saveload := false
 var _resize_steps: Array[Vector2i] = []
+var _fill_at := Vector2i(-1, -1)
+var _fill_elem := Elements.WATER
 
 var _resize_timer: Timer
 
@@ -82,6 +84,7 @@ func _ready() -> void:
 
 	menu.element_selected.connect(func(e: int) -> void: brush.selected_elem = e)
 	menu.pen_size_changed.connect(func(r: int) -> void: brush.pen_radius = r)
+	menu.mode_changed.connect(func(m: int) -> void: brush.mode = m)
 	menu.overwrite_changed.connect(func(on: bool) -> void: brush.overwrite = on)
 	menu.speed_changed.connect(func(fps: int) -> void: fps_setting = fps)
 	menu.spigot_element_changed.connect(func(i: int, e: int) -> void: spigots.elements[i] = e)
@@ -190,6 +193,11 @@ func _parse_test_args() -> void:
 			demo = arg.get_slice("=", 1)
 		elif arg == "--test-saveload":
 			_test_saveload = true
+		elif arg.begins_with("--test-fill="):
+			var f := arg.get_slice("=", 1).split(",")
+			if f.size() >= 2:
+				_fill_at = Vector2i(int(f[0]), int(f[1]))
+				_fill_elem = int(f[2]) if f.size() > 2 else Elements.WATER
 		elif arg.begins_with("--resize="):
 			for spec in arg.get_slice("=", 1).split(","):
 				var wh := spec.split("x")
@@ -254,6 +262,22 @@ func _setup_demo(name: String) -> void:
 			sim.stamp_segment(Elements.WALL, 700, 500, 1100, 500, 4)
 			sim.stamp_rect(Elements.MYSTERY, 800, 470, 840, 496, 100)
 			sim.stamp_rect(Elements.SALT, 845, 470, 880, 496, 100)
+		"brushes":
+			# Top row: dragged strokes. Bottom row: single dabs.
+			sim.stamp_stroke(Elements.WALL, FallingSand.CMD_SEGMENT, 160, 180, 380, 180, 22)
+			sim.stamp_stroke(Elements.WALL, FallingSand.CMD_SQUARE, 530, 180, 750, 180, 22)
+			sim.stamp_stroke(Elements.WALL, FallingSand.CMD_SPRAY, 900, 180, 1120, 180, 26)
+			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SEGMENT, 250, 420, 250, 420, 26)
+			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SQUARE, 630, 420, 630, 420, 26)
+			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SPRAY, 1010, 420, 1010, 420, 30)
+		"fillbox":
+			# Closed container: a fill seeded inside must stay inside.
+			sim.stamp_stroke(Elements.WALL, FallingSand.CMD_SEGMENT, 300, 260, 900, 260, 4)
+			sim.stamp_stroke(Elements.WALL, FallingSand.CMD_SEGMENT, 300, 620, 900, 620, 4)
+			sim.stamp_stroke(Elements.WALL, FallingSand.CMD_SEGMENT, 300, 260, 300, 620, 4)
+			sim.stamp_stroke(Elements.WALL, FallingSand.CMD_SEGMENT, 900, 260, 900, 620, 4)
+			# A divider with no gap: only the left half should fill.
+			sim.stamp_stroke(Elements.WALL, FallingSand.CMD_SEGMENT, 600, 260, 600, 620, 4)
 		"stress":
 			# Worst case: most of the grid full of active liquid and lava.
 			sim.stamp_rect(Elements.WATER, 0, 0, w, h * 4 / 10, 100)
@@ -273,6 +297,9 @@ func _handle_test_hooks() -> void:
 			if _frame_count == stride * (i + 1):
 				DisplayServer.window_set_size(_resize_steps[i])
 				print("resize: window -> ", _resize_steps[i], " at frame ", _frame_count)
+	if _fill_at.x >= 0 and _frame_count == _screenshot_frames / 3:
+		sim.flood_fill(_fill_at.x, _fill_at.y, _fill_elem)
+		print("fill: seeded at ", _fill_at, " with element ", _fill_elem)
 	if _test_saveload:
 		if _frame_count == _screenshot_frames / 4:
 			sim.save_canvas()

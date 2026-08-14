@@ -67,6 +67,60 @@ static func dot(color: Color, size: int) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
+enum { GLYPH_CIRCLE, GLYPH_SQUARE, GLYPH_SPRAY, GLYPH_FILL }
+
+
+# Tool icons, drawn procedurally so the project stays asset-free.
+static func glyph(kind: int, size: int, colour: Color) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var c := (size - 1) * 0.5
+	var r := size * 0.5 - 1.5
+
+	match kind:
+		GLYPH_CIRCLE:
+			for y in size:
+				for x in size:
+					var d := Vector2(x - c, y - c).length()
+					_put(img, x, y, colour, clampf(1.2 - absf(d - r), 0.0, 1.0))
+		GLYPH_SQUARE:
+			for y in size:
+				for x in size:
+					var d := maxf(absf(x - c), absf(y - c))
+					_put(img, x, y, colour, clampf(1.2 - absf(d - r), 0.0, 1.0))
+		GLYPH_SPRAY:
+			# Fixed scatter so the icon is stable between runs.
+			var pts := [
+				Vector2(0.0, -0.75), Vector2(-0.6, -0.3), Vector2(0.62, -0.35),
+				Vector2(-0.28, 0.12), Vector2(0.3, 0.18), Vector2(-0.75, 0.55),
+				Vector2(0.08, 0.62), Vector2(0.72, 0.6),
+			]
+			for pt in pts:
+				var px := int(round(c + pt.x * r))
+				var py := int(round(c + pt.y * r))
+				_put(img, px, py, colour, 1.0)
+				_put(img, px + 1, py, colour, 0.45)
+				_put(img, px, py + 1, colour, 0.45)
+		GLYPH_FILL:
+			# Square outline with the lower half solid: a fill level.
+			for y in size:
+				for x in size:
+					var d := maxf(absf(x - c), absf(y - c))
+					var edge := clampf(1.2 - absf(d - r), 0.0, 1.0)
+					var inside := 1.0 if (d < r and float(y) > c + 0.5) else 0.0
+					_put(img, x, y, colour, maxf(edge, inside * 0.85))
+
+	return ImageTexture.create_from_image(img)
+
+
+static func _put(img: Image, x: int, y: int, colour: Color, a: float) -> void:
+	if a <= 0.0 or x < 0 or y < 0 or x >= img.get_width() or y >= img.get_height():
+		return
+	var prev := img.get_pixel(x, y)
+	var na := maxf(prev.a, clampf(a, 0.0, 1.0))
+	img.set_pixel(x, y, Color(colour.r, colour.g, colour.b, na))
+
+
 # Small uppercase section heading.
 static func caption(text: String) -> Label:
 	var l := Label.new()
@@ -92,22 +146,53 @@ static func style_button(b: Button, tint: Color, font_size := 11) -> void:
 	b.add_theme_color_override("font_focus_color", TEXT)
 
 
-# Element swatch: colour dot plus name, selected state tinted with the
-# element's own colour so the palette stays self-describing.
-static func style_swatch(b: Button, colour: Color) -> void:
+# Borderless button: chrome only appears on hover or when active.
+static func style_ghost(b: Button, tint: Color) -> void:
 	b.focus_mode = Control.FOCUS_NONE
-	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.add_theme_font_size_override("font_size", 10)
-	b.add_theme_constant_override("h_separation", 6)
-	b.add_theme_stylebox_override("normal", box(RAISED, R_SM, 7, 4, 1, BORDER_SOFT))
-	b.add_theme_stylebox_override("hover", box(RAISED_HOVER, R_SM, 7, 4, 1, BORDER))
+	b.add_theme_stylebox_override("normal", box(Color(0, 0, 0, 0), R_SM, 8, 4))
+	b.add_theme_stylebox_override("hover", box(RAISED_HOVER, R_SM, 8, 4))
 	b.add_theme_stylebox_override("pressed",
-		box(Color(colour.r, colour.g, colour.b, 0.18), R_SM, 7, 4, 1,
-			Color(colour.r, colour.g, colour.b, 0.85)))
+		box(Color(tint.r, tint.g, tint.b, 0.16), R_SM, 8, 4))
 	b.add_theme_stylebox_override("focus", empty_box())
 	b.add_theme_color_override("font_color", TEXT_DIM)
 	b.add_theme_color_override("font_hover_color", TEXT)
-	b.add_theme_color_override("font_pressed_color", colour.lightened(0.45))
+	b.add_theme_color_override("font_pressed_color", tint.lightened(0.3))
+
+
+# Element swatch: a bare colour tile. The name lives in the tooltip and
+# in the palette's heading, which keeps the grid free of text.
+static func style_swatch(b: Button, colour: Color, is_empty := false) -> void:
+	b.focus_mode = Control.FOCUS_NONE
+	var fill := colour
+	var rest_border := 0
+	var rest_border_c := Color(0, 0, 0, 0)
+	if is_empty:
+		# The eraser paints BACKGROUND, whose colour is black; show it as
+		# an outlined hole instead of an invisible tile.
+		fill = SUNKEN
+		rest_border = 1
+		rest_border_c = TEXT_FAINT
+	b.add_theme_stylebox_override("normal", box(fill, 4, 0, 0, rest_border, rest_border_c))
+	b.add_theme_stylebox_override("hover",
+		box(fill.lightened(0.12) if not is_empty else RAISED_HOVER, 4, 0, 0, 1, TEXT_DIM))
+	b.add_theme_stylebox_override("pressed", box(fill, 4, 0, 0, 2, TEXT))
+	b.add_theme_stylebox_override("focus", empty_box())
+
+
+# Square icon button for the tool row.
+static func style_tool(b: Button) -> void:
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_stylebox_override("normal", box(Color(0, 0, 0, 0), R_SM, 0, 0))
+	b.add_theme_stylebox_override("hover", box(RAISED_HOVER, R_SM, 0, 0))
+	b.add_theme_stylebox_override("pressed",
+		box(Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.18), R_SM, 0, 0, 1, ACCENT))
+	b.add_theme_stylebox_override("focus", empty_box())
+	# Glyphs are generated white and tinted per state, so a single
+	# texture serves all three.
+	b.add_theme_color_override("icon_normal_color", TEXT_DIM)
+	b.add_theme_color_override("icon_hover_color", TEXT)
+	b.add_theme_color_override("icon_pressed_color", ACCENT)
 
 
 static func style_option(ob: OptionButton, font_size := 10) -> void:

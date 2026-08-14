@@ -1,11 +1,16 @@
-# Control panel: element palette, brush settings, simulation speed,
-# spigot configuration and canvas actions. Mirrors the options of the
-# original menu.js, restyled as a dark sectioned toolbar (see ui_theme.gd).
+# Control panel: element palette, tools, brush size, simulation speed,
+# spigot configuration and canvas actions.
+#
+# Deliberately spare: the palette is bare colour tiles (names live in the
+# tooltip and in the heading, which tracks the selection), sections are
+# separated by whitespace rather than rules, and every readout doubles as
+# its own label so nothing is stated twice.
 class_name SandMenu
 extends PanelContainer
 
 signal element_selected(elem: int)
 signal pen_size_changed(radius: int)
+signal mode_changed(mode: int)
 signal overwrite_changed(enabled: bool)
 signal speed_changed(fps: int)
 signal spigot_element_changed(index: int, elem: int)
@@ -14,70 +19,64 @@ signal clear_pressed
 signal save_pressed
 signal load_pressed
 
-const PEN_SIZES: Array[int] = [2, 4, 8, 16, 32, 64]
-const PEN_SIZE_LABELS: Array[String] = ["1", "2", "4", "8", "16", "32"]
-const DEFAULT_PEN_IDX := 1
 const DEFAULT_FPS := 60
 const MAX_FPS := 120
 
-# 24 elements as 6x4 rather than 8x3: the taller block is squarer, and
-# it keeps the whole toolbar inside a 1280px window.
-const SWATCH_COLUMNS := 6
-const SWATCH_WIDTH := 86
+const MIN_RADIUS := 1
+const MAX_RADIUS := 64
+const DEFAULT_RADIUS := 2
 
-var _fps_value: Label
-var _speed_value: Label
-var _element_buttons := {}
+const SWATCH_COLUMNS := 12
+const SWATCH_SIZE := 20
+
+var _element_label: Label
+var _size_label: Label
+var _speed_label: Label
+var _fps := 0
+var _speed := DEFAULT_FPS
 
 
 func _ready() -> void:
 	UITheme.style_panel(self)
 
 	var root := MarginContainer.new()
-	root.add_theme_constant_override("margin_left", 14)
-	root.add_theme_constant_override("margin_right", 14)
-	root.add_theme_constant_override("margin_top", 10)
-	root.add_theme_constant_override("margin_bottom", 10)
+	root.add_theme_constant_override("margin_left", 16)
+	root.add_theme_constant_override("margin_right", 16)
+	root.add_theme_constant_override("margin_top", 9)
+	root.add_theme_constant_override("margin_bottom", 9)
 	add_child(root)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 26)
 	root.add_child(row)
 
-	row.add_child(_section("Elements", _build_element_grid()))
-	row.add_child(UITheme.divider())
-	row.add_child(_section("Brush", _build_brush_controls()))
-	row.add_child(UITheme.divider())
-	row.add_child(_section("Simulation", _build_sim_controls()))
-	row.add_child(UITheme.divider())
-	row.add_child(_section("Spigots", _build_spigot_controls()))
-	row.add_child(UITheme.divider())
-	row.add_child(_section("Canvas", _build_actions()))
+	row.add_child(_build_palette())
+	row.add_child(_build_tools())
+	row.add_child(_build_size())
+	row.add_child(_build_speed())
+	row.add_child(_build_spigots())
+	row.add_child(_build_actions())
 
 
 func set_fps_text(fps: int) -> void:
-	if not _fps_value:
-		return
-	_fps_value.text = "%d fps" % fps
-	# Amber while keeping up, dimmed once the sim falls behind the
-	# requested rate.
-	_fps_value.add_theme_color_override("font_color",
-		UITheme.ACCENT if fps >= 55 else UITheme.TEXT_DIM)
+	_fps = fps
+	_refresh_speed_label()
 
 
-# A captioned column: heading above, content below.
-func _section(title: String, content: Control) -> Control:
+# A column with a small heading above its content.
+func _column(heading: Label, content: Control) -> Control:
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 7)
-	# Hug the top: without this the row's spare height stretches the
-	# controls inside each section.
+	col.add_theme_constant_override("separation", 6)
 	col.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	col.add_child(UITheme.caption(title))
+	col.add_child(heading)
 	col.add_child(content)
 	return col
 
 
-func _build_element_grid() -> Control:
+func _build_palette() -> Control:
+	_element_label = UITheme.caption(Elements.MENU_NAMES[Elements.WALL])
+	_element_label.add_theme_color_override("font_color", UITheme.TEXT)
+
 	var grid := GridContainer.new()
 	grid.columns = SWATCH_COLUMNS
 	grid.add_theme_constant_override("h_separation", 3)
@@ -85,67 +84,93 @@ func _build_element_grid() -> Control:
 
 	var group := ButtonGroup.new()
 	for elem in Elements.MENU_ITEMS:
-		var colour: Color = Elements.menu_color(elem)
 		var btn := Button.new()
-		btn.text = Elements.MENU_NAMES[elem]
 		btn.toggle_mode = true
 		btn.button_group = group
-		btn.icon = UITheme.dot(colour, 9)
-		btn.custom_minimum_size = Vector2(SWATCH_WIDTH, 0)
-		UITheme.style_swatch(btn, colour)
+		btn.custom_minimum_size = Vector2(SWATCH_SIZE, SWATCH_SIZE)
+		btn.tooltip_text = Elements.MENU_NAMES[elem]
+		UITheme.style_swatch(btn, Elements.COLORS[elem], elem == Elements.BACKGROUND)
 		var e := elem
-		btn.pressed.connect(func() -> void: element_selected.emit(e))
+		btn.pressed.connect(func() -> void:
+			_element_label.text = Elements.MENU_NAMES[e].to_upper()
+			element_selected.emit(e))
 		grid.add_child(btn)
-		_element_buttons[elem] = btn
+		if elem == Elements.WALL:
+			btn.button_pressed = true
 
-	_element_buttons[Elements.WALL].button_pressed = true
-	return grid
+	return _column(_element_label, grid)
 
 
-func _build_brush_controls() -> Control:
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
+func _build_tools() -> Control:
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 3)
 
-	# Pen size as a segmented control rather than a dropdown: all the
-	# options are visible and one click wide.
-	var sizes := HBoxContainer.new()
-	sizes.add_theme_constant_override("separation", 3)
 	var group := ButtonGroup.new()
-	for i in PEN_SIZES.size():
-		var b := Button.new()
-		b.text = PEN_SIZE_LABELS[i]
-		b.toggle_mode = true
-		b.button_group = group
-		b.custom_minimum_size = Vector2(26, 0)
-		UITheme.style_button(b, UITheme.ACCENT, 10)
-		var idx := i
-		b.pressed.connect(func() -> void:
-			pen_size_changed.emit(PEN_SIZES[idx] / 2))
-		sizes.add_child(b)
-		if i == DEFAULT_PEN_IDX:
-			b.button_pressed = true
-	col.add_child(sizes)
+	var tools := [
+		[Brush.MODE_CIRCLE, UITheme.GLYPH_CIRCLE, "Round brush"],
+		[Brush.MODE_SQUARE, UITheme.GLYPH_SQUARE, "Square brush"],
+		[Brush.MODE_SPRAY, UITheme.GLYPH_SPRAY, "Spray"],
+		[Brush.MODE_FILL, UITheme.GLYPH_FILL, "Fill connected area"],
+	]
+	for t in tools:
+		var btn := Button.new()
+		btn.toggle_mode = true
+		btn.button_group = group
+		btn.custom_minimum_size = Vector2(28, 28)
+		btn.tooltip_text = t[2]
+		btn.icon = UITheme.glyph(t[1], 16, Color.WHITE)
+		UITheme.style_tool(btn)
+		var mode: int = t[0]
+		btn.pressed.connect(func() -> void: mode_changed.emit(mode))
+		bar.add_child(btn)
+		if mode == Brush.MODE_CIRCLE:
+			btn.button_pressed = true
 
 	var overwrite := Button.new()
 	overwrite.text = "Overwrite"
 	overwrite.toggle_mode = true
 	overwrite.button_pressed = true
-	UITheme.style_button(overwrite, UITheme.ACCENT, 10)
+	overwrite.tooltip_text = "Draw over existing material instead of only empty space"
+	UITheme.style_ghost(overwrite, UITheme.ACCENT)
 	overwrite.toggled.connect(func(on: bool) -> void: overwrite_changed.emit(on))
-	col.add_child(overwrite)
-	return col
 
-
-func _build_sim_controls() -> Control:
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
+	col.add_theme_constant_override("separation", 4)
+	col.add_child(bar)
+	col.add_child(overwrite)
+	return _column(UITheme.caption("Tool"), col)
+
+
+func _build_size() -> Control:
+	_size_label = UITheme.caption("Size  %d" % DEFAULT_RADIUS)
+
+	var slider := HSlider.new()
+	slider.min_value = MIN_RADIUS
+	slider.max_value = MAX_RADIUS
+	slider.value = DEFAULT_RADIUS
+	slider.step = 1
+	slider.custom_minimum_size = Vector2(118, 16)
+	slider.tooltip_text = "Brush radius in cells"
+	UITheme.style_slider(slider)
+	slider.value_changed.connect(func(v: float) -> void:
+		var r := int(v)
+		_size_label.text = "Size  %d" % r
+		pen_size_changed.emit(r))
+
+	return _column(_size_label, slider)
+
+
+func _build_speed() -> Control:
+	_speed_label = UITheme.caption("")
+	_refresh_speed_label()
 
 	var slider := HSlider.new()
 	slider.min_value = 0
 	slider.max_value = MAX_FPS
 	slider.value = DEFAULT_FPS
 	slider.step = 1
-	slider.custom_minimum_size = Vector2(150, 16)
+	slider.custom_minimum_size = Vector2(118, 16)
+	slider.tooltip_text = "Target simulation ticks per second (0 pauses)"
 	UITheme.style_slider(slider)
 	slider.value_changed.connect(func(v: float) -> void:
 		var val := int(v)
@@ -153,103 +178,81 @@ func _build_sim_controls() -> Control:
 		if absi(val - DEFAULT_FPS) < 8 and val != DEFAULT_FPS:
 			slider.set_value_no_signal(DEFAULT_FPS)
 			val = DEFAULT_FPS
-		_set_speed_label(val)
+		_speed = val
+		_refresh_speed_label()
 		speed_changed.emit(val))
-	col.add_child(slider)
 
-	var readout := HBoxContainer.new()
-	readout.add_theme_constant_override("separation", 10)
-
-	_speed_value = Label.new()
-	_speed_value.add_theme_font_size_override("font_size", 10)
-	_speed_value.add_theme_color_override("font_color", UITheme.TEXT_DIM)
-	_speed_value.custom_minimum_size = Vector2(78, 0)
-	readout.add_child(_speed_value)
-
-	_fps_value = Label.new()
-	_fps_value.text = "0 fps"
-	_fps_value.add_theme_font_size_override("font_size", 10)
-	_fps_value.add_theme_color_override("font_color", UITheme.TEXT_DIM)
-	readout.add_child(_fps_value)
-
-	col.add_child(readout)
-	_set_speed_label(DEFAULT_FPS)
-	return col
+	return _column(_speed_label, slider)
 
 
-func _set_speed_label(fps: int) -> void:
-	if not _speed_value:
+func _refresh_speed_label() -> void:
+	if not _speed_label:
 		return
-	_speed_value.text = "paused" if fps == 0 else "target %d" % fps
+	if _speed == 0:
+		_speed_label.text = "Paused"
+	else:
+		_speed_label.text = "Speed  %d   ·   %d fps" % [_speed, _fps]
+	_speed_label.add_theme_color_override("font_color",
+		UITheme.TEXT_FAINT if _speed == 0 or _fps < _speed - 6 else UITheme.ACCENT)
 
 
-func _build_spigot_controls() -> Control:
+func _build_spigots() -> Control:
 	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 5)
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 14)
 	grid.add_theme_constant_override("v_separation", 3)
 
 	for i in Spigots.NUM_SPIGOTS:
 		var idx := i
-
-		var swatch := TextureRect.new()
-		swatch.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
-		swatch.custom_minimum_size = Vector2(10, 10)
-		swatch.texture = UITheme.dot(
-			Elements.menu_color(Elements.SPIGOT_OPTIONS[i]), 9)
-		grid.add_child(swatch)
+		var cell := HBoxContainer.new()
+		cell.add_theme_constant_override("separation", 4)
 
 		var type_btn := OptionButton.new()
 		for k in Elements.SPIGOT_OPTIONS.size():
 			type_btn.add_item(Elements.MENU_NAMES[Elements.SPIGOT_OPTIONS[k]], k)
 		type_btn.select(i) # spigot i defaults to option i, as in the original
-		type_btn.custom_minimum_size = Vector2(104, 0)
+		type_btn.custom_minimum_size = Vector2(96, 0)
 		UITheme.style_option(type_btn)
 		type_btn.item_selected.connect(func(opt: int) -> void:
-			var elem: int = Elements.SPIGOT_OPTIONS[opt]
-			swatch.texture = UITheme.dot(Elements.menu_color(elem), 9)
-			spigot_element_changed.emit(idx, elem))
-		grid.add_child(type_btn)
+			spigot_element_changed.emit(idx, Elements.SPIGOT_OPTIONS[opt]))
+		cell.add_child(type_btn)
 
 		var size_btn := OptionButton.new()
 		for k in Spigots.SIZE_OPTIONS.size():
 			size_btn.add_item(str(k), k)
 		size_btn.select(Spigots.DEFAULT_SIZE_IDX)
-		size_btn.custom_minimum_size = Vector2(44, 0)
+		size_btn.custom_minimum_size = Vector2(40, 0)
+		size_btn.tooltip_text = "Spigot %d width" % (i + 1)
 		UITheme.style_option(size_btn)
 		size_btn.item_selected.connect(func(opt: int) -> void:
 			spigot_size_changed.emit(idx, Spigots.SIZE_OPTIONS[opt]))
-		grid.add_child(size_btn)
+		cell.add_child(size_btn)
 
-		var tag := Label.new()
-		tag.text = str(i + 1)
-		tag.add_theme_font_size_override("font_size", 9)
-		tag.add_theme_color_override("font_color", UITheme.TEXT_FAINT)
-		grid.add_child(tag)
+		grid.add_child(cell)
 
-	return grid
+	return _column(UITheme.caption("Spigots"), grid)
 
 
 func _build_actions() -> Control:
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 3)
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 2)
 
 	var save := Button.new()
 	save.text = "Save"
-	UITheme.style_button(save, UITheme.ACCENT, 10)
+	UITheme.style_ghost(save, UITheme.ACCENT)
 	save.pressed.connect(func() -> void: save_pressed.emit())
-	col.add_child(save)
+	bar.add_child(save)
 
 	var load_btn := Button.new()
 	load_btn.text = "Load"
-	UITheme.style_button(load_btn, UITheme.ACCENT, 10)
+	UITheme.style_ghost(load_btn, UITheme.ACCENT)
 	load_btn.pressed.connect(func() -> void: load_pressed.emit())
-	col.add_child(load_btn)
+	bar.add_child(load_btn)
 
 	var clear := Button.new()
 	clear.text = "Clear"
-	UITheme.style_button(clear, UITheme.DANGER, 10)
+	UITheme.style_ghost(clear, UITheme.DANGER)
 	clear.pressed.connect(func() -> void: clear_pressed.emit())
-	col.add_child(clear)
+	bar.add_child(clear)
 
-	return col
+	return _column(UITheme.caption("Canvas"), bar)

@@ -17,14 +17,24 @@ editor, or from a shell:
 godot --path C:\Users\user\Godot\FS2
 ```
 
-Click on the canvas to draw the selected element. A ring follows the cursor showing
+Click on the canvas to draw the selected element. The cursor outline previews
 exactly which cells the next stroke will cover — the grid is one cell per pixel, so
-it is a literal preview rather than an approximation.
+it is literal, not an approximation — and it takes the shape of the active tool.
 
-The toolbar below the canvas is grouped into **Elements** (all 24 drawable
-materials, each with its in-game colour as a swatch), **Brush** (pen size and the
-overwrite toggle), **Simulation** (speed slider — 0 pauses — plus the live tick
-rate), **Spigots** (the four emitters), and **Canvas** (Save / Load / Clear).
+Four tools:
+
+| Tool | Behaviour |
+| --- | --- |
+| Round | Capsule stroke — the classic brush |
+| Square | Square profile, for straight edges and blocks |
+| Spray | Scattered spatter, densest at the centre and thinning toward the rim |
+| Fill | Bucket: replaces the connected region of whatever you click on |
+
+The toolbar is grouped into the **palette** (24 bare colour tiles; the heading
+names the current selection and each tile has a tooltip), **Tool** (the four tools
+plus the overwrite toggle), **Size** (brush radius, 1–64 cells), **Speed** (target
+ticks per second — 0 pauses — beside the measured rate), **Spigots**, and
+**Canvas** (Save / Load / Clear).
 
 Resize the window and the grid grows or shrinks with it — you get more world, not
 a scaled-up picture. Existing contents are anchored to the **bottom-left**, so
@@ -44,6 +54,12 @@ recompilation: `FallingSand.resize()` allocates new textures, blits the overlapp
 region across with `texture_copy` (a GPU-side copy, no readback), and rebuilds the
 uniform sets. Resizes are debounced by 150 ms so dragging a window edge reallocates
 once rather than every event.
+
+Bucket fill is the one operation that does not run on the GPU. A parallel flood
+would need one propagation pass per cell of travel, so instead it reads the grid
+back once, runs a scanline fill on the CPU and uploads the result — a one-off cost
+on click rather than per frame. A fill covering ~900k cells measures within noise
+of no fill at all (175 versus 173 ticks over the same 400 frames).
 
 One sharp edge worth knowing: `Texture2DRD` does **not** take ownership of the RID
 you hand it, but the canvas renderer may still reference the old texture for a
@@ -108,9 +124,11 @@ godot --path . -- --demo=liquids --screenshot=out.png --frames=1200
 ```
 
 Demos: `sand`, `liquids`, `fire`, `boom`, `boom2`, `lava`, `tree`, `magic`,
-`stress`. Add `--test-saveload` to exercise a save → clear → load round trip, and
-`--resize=1400x900,1700x1000` to drive one or more window resizes mid-run (spread
-through the first half of the frame budget).
+`stress`, `brushes` (the three stroke profiles) and `fillbox` (a divided container
+for testing fill). Add `--test-saveload` to exercise a save → clear → load round
+trip, `--test-fill=x,y[,element]` to seed a bucket fill mid-run, and
+`--resize=1400x900,1700x1000` to drive one or more window resizes (spread through
+the first half of the frame budget).
 
 The window renders uncapped, so `--frames=N` is *not* N simulation ticks; the
 screenshot log prints the actual tick count and the final grid size.

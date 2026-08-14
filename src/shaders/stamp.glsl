@@ -10,7 +10,8 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 layout(set = 0, binding = 0, r32ui) uniform restrict uimage2D grid;
 
 // Each command is 8 ints:
-//   [0] kind: 0 = circle, 1 = segment (capsule), 2 = dithered rect
+//   [0] kind: 0 = circle, 1 = round segment (capsule),
+//             2 = dithered rect, 3 = square segment, 4 = spray segment
 //   [1] element id
 //   [2] flags: bit0 overwrite (else only paints BACKGROUND),
 //              bit1 never paint over WALL (tree strokes)
@@ -40,11 +41,12 @@ uint rnd100(uint cell_idx, uint salt) {
 	return pcg(cell_idx ^ pcg(salt ^ (params.tick * 0x9E3779B9u))) % 100u;
 }
 
-float dist_to_segment(vec2 p, vec2 a, vec2 b) {
+// Closest point on segment ab to p.
+vec2 closest_on_segment(vec2 p, vec2 a, vec2 b) {
 	vec2 ab = b - a;
 	float len2 = dot(ab, ab);
 	float t = len2 > 0.0 ? clamp(dot(p - a, ab) / len2, 0.0, 1.0) : 0.0;
-	return length(p - (a + t * ab));
+	return a + t * ab;
 }
 
 void main() {
@@ -70,10 +72,27 @@ void main() {
 		if (kind == 0) {
 			covered = distance(pf, vec2(p0) + vec2(0.5)) <= float(r);
 		} else if (kind == 1) {
-			covered = dist_to_segment(pf, vec2(p0) + vec2(0.5), vec2(p1) + vec2(0.5)) <= float(r);
+			vec2 q = closest_on_segment(pf, vec2(p0) + vec2(0.5), vec2(p1) + vec2(0.5));
+			covered = distance(pf, q) <= float(r);
 		} else if (kind == 2) {
 			if (p.x >= p0.x && p.x < p1.x && p.y >= p0.y && p.y < p1.y) {
 				covered = rnd100(uint(p.y * size.x + p.x), 0xABCDu + c) < uint(r);
+			}
+		} else if (kind == 3) {
+			// Square profile: Chebyshev distance to the stroke.
+			vec2 q = closest_on_segment(pf, vec2(p0) + vec2(0.5), vec2(p1) + vec2(0.5));
+			vec2 d = abs(pf - q);
+			covered = max(d.x, d.y) <= float(r);
+		} else if (kind == 4) {
+			// Spray: round profile, but only a fraction of the covered
+			// cells actually take. Density falls off toward the edge so
+			// the spatter looks airbrushed rather than cut out.
+			vec2 q = closest_on_segment(pf, vec2(p0) + vec2(0.5), vec2(p1) + vec2(0.5));
+			float d = distance(pf, q);
+			if (d <= float(r)) {
+				float falloff = 1.0 - d / max(float(r), 1.0);
+				uint chance = uint(clamp(14.0 * falloff * falloff + 3.0, 1.0, 99.0));
+				covered = rnd100(uint(p.y * size.x + p.x), 0x5EEDu + c) < chance;
 			}
 		}
 		if (!covered) continue;

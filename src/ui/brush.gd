@@ -1,13 +1,19 @@
-# Mouse/touch drawing onto the sim grid, ported from cursor.js.
-# The control covers the sim view 1:1, so local coordinates are grid
-# coordinates. While the pointer is held down we stamp a capsule from
-# the previous to the current position every frame, which matches the
-# original's interpolated stroke drawing.
+# Pointer input over the simulation grid, ported from cursor.js and
+# extended with brush shapes and a bucket fill.
 #
-# It also draws the cursor ring: the grid is one cell per pixel, so the
-# ring is a literal preview of the area the next stamp will cover.
+# The control covers the sim view 1:1, so local coordinates are grid
+# coordinates. While the pointer is held down we stamp a stroke from the
+# previous to the current position every frame, which matches the
+# original's interpolated drawing. It also draws the cursor preview:
+# because the grid is one cell per pixel, the outline is a literal
+# preview of the cells the next stroke will cover.
 class_name Brush
 extends Control
+
+const MODE_CIRCLE := 0
+const MODE_SQUARE := 1
+const MODE_SPRAY := 2
+const MODE_FILL := 3
 
 var sim: FallingSand
 
@@ -19,6 +25,11 @@ var selected_elem := Elements.WALL:
 var pen_radius := 2:
 	set(value):
 		pen_radius = value
+		queue_redraw()
+
+var mode := MODE_CIRCLE:
+	set(value):
+		mode = value
 		queue_redraw()
 
 var overwrite := true
@@ -43,9 +54,14 @@ func _ready() -> void:
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			_pressed = true
 			_pos = Vector2i(event.position)
 			_prev = _pos
+			if mode == MODE_FILL:
+				# One-shot: fill does not drag.
+				if sim:
+					sim.flood_fill(_pos.x, _pos.y, selected_elem)
+			else:
+				_pressed = true
 		else:
 			_pressed = false
 		queue_redraw()
@@ -59,8 +75,18 @@ func update_stroke() -> void:
 		return
 	# Eraser always overwrites, like the original.
 	var ow := overwrite or selected_elem == Elements.BACKGROUND
-	sim.stamp_segment(selected_elem, _prev.x, _prev.y, _pos.x, _pos.y, pen_radius, ow)
+	sim.stamp_stroke(selected_elem, _stamp_kind(),
+		_prev.x, _prev.y, _pos.x, _pos.y, pen_radius, ow)
 	_prev = _pos
+
+
+func _stamp_kind() -> int:
+	match mode:
+		MODE_SQUARE:
+			return FallingSand.CMD_SQUARE
+		MODE_SPRAY:
+			return FallingSand.CMD_SPRAY
+	return FallingSand.CMD_SEGMENT
 
 
 func _draw() -> void:
@@ -68,17 +94,46 @@ func _draw() -> void:
 		return
 
 	# The eraser's element colour is black, which would be invisible
-	# against the canvas, so it gets a neutral ring instead.
+	# against the canvas, so it gets a neutral outline instead.
 	var tint := UITheme.TEXT if selected_elem == Elements.BACKGROUND \
 		else Elements.COLORS[selected_elem]
+	var line := Color(tint.r, tint.g, tint.b, 0.95 if _pressed else 0.7)
+	var halo := Color(0, 0, 0, 0.55)
 	var centre := Vector2(_pos) + Vector2(0.5, 0.5)
-	var radius := maxf(float(pen_radius), 1.5)
+	var r := maxf(float(pen_radius), 1.5)
 
-	# Dark halo first so the ring stays legible over pale materials.
-	draw_arc(centre, radius + 1.0, 0.0, TAU, 48, Color(0, 0, 0, 0.55), 2.0, true)
-	draw_arc(centre, radius, 0.0, TAU, 48,
-		Color(tint.r, tint.g, tint.b, 0.95 if _pressed else 0.7), 1.0, true)
+	match mode:
+		MODE_SQUARE:
+			# Halo drawn as a slightly larger outline so the preview
+			# stays legible over pale materials.
+			_rect(centre, r + 1.0, halo, 2.0)
+			_rect(centre, r, line, 1.0)
+		MODE_SPRAY:
+			# Dashed ring reads as "soft edge" rather than a hard cut.
+			for i in 16:
+				if i % 2 == 1:
+					continue
+				var a0 := TAU * float(i) / 16.0
+				var a1 := TAU * float(i + 1) / 16.0
+				draw_arc(centre, r + 1.0, a0, a1, 4, halo, 2.0, true)
+				draw_arc(centre, r, a0, a1, 4, line, 1.0, true)
+		MODE_FILL:
+			# Crosshair: fill has no area, only a seed point.
+			var s := 7.0
+			draw_line(centre - Vector2(s, 0), centre + Vector2(s, 0), halo, 3.0, true)
+			draw_line(centre - Vector2(0, s), centre + Vector2(0, s), halo, 3.0, true)
+			draw_line(centre - Vector2(s, 0), centre + Vector2(s, 0), line, 1.0, true)
+			draw_line(centre - Vector2(0, s), centre + Vector2(0, s), line, 1.0, true)
+			draw_arc(centre, 2.5, 0.0, TAU, 12, line, 1.0, true)
+		_:
+			draw_arc(centre, r + 1.0, 0.0, TAU, 48, halo, 2.0, true)
+			draw_arc(centre, r, 0.0, TAU, 48, line, 1.0, true)
 
-	# Centre pip helps aim when the radius is large.
-	if radius > 6.0:
+	# Centre pip helps aim when the brush is large.
+	if mode != MODE_FILL and r > 6.0:
 		draw_arc(centre, 1.0, 0.0, TAU, 8, Color(tint.r, tint.g, tint.b, 0.8), 1.0, true)
+
+
+func _rect(centre: Vector2, half: float, colour: Color, width: float) -> void:
+	var rect := Rect2(centre - Vector2(half, half), Vector2(half * 2.0, half * 2.0))
+	draw_rect(rect, colour, false, width)

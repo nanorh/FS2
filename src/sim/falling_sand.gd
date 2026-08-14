@@ -27,6 +27,8 @@ const MAX_EVENTS := 4096
 const CMD_CIRCLE := 0
 const CMD_SEGMENT := 1
 const CMD_RECT := 2
+const CMD_SQUARE := 3
+const CMD_SPRAY := 4
 
 # Stamp flags
 const FLAG_OVERWRITE := 1
@@ -143,6 +145,22 @@ func stamp_rect(elem: int, x0: int, y0: int, x1: int, y1: int, density: int, ove
 
 func stamp_cell(elem: int, x: int, y: int, overwrite := true) -> void:
 	stamp_rect(elem, x, y, x + 1, y + 1, 100, overwrite)
+
+
+# A stroke with a selectable profile: CMD_SEGMENT (round), CMD_SQUARE or
+# CMD_SPRAY.
+func stamp_stroke(elem: int, kind: int, x0: int, y0: int, x1: int, y1: int,
+		radius: int, overwrite := true) -> void:
+	_push_cmd(kind, elem, _flags(overwrite, false), x0, y0, x1, y1, radius)
+
+
+# Bucket fill: replaces the connected region of whatever element sits at
+# (x, y) with `elem`. Runs on the render thread against a snapshot of the
+# grid, so it lands on the next frame.
+func flood_fill(x: int, y: int, elem: int) -> void:
+	if not _gpu_ready:
+		return
+	RenderingServer.call_on_render_thread(_gpu_flood_fill.bind(x, y, elem))
 
 
 # Runs `ticks` simulation steps this frame (0 = just apply stamps).
@@ -545,6 +563,60 @@ func _run_scramble(groups_x: int, groups_y: int) -> void:
 		_rd.compute_list_dispatch(cl, groups_x, groups_y, 1)
 		_rd.compute_list_add_barrier(cl)
 	_rd.compute_list_end()
+
+
+# Scanline flood fill. A GPU flood would need one propagation pass per
+# cell of travel, so this reads the grid back, fills on the CPU and
+# uploads once - a one-off cost on click rather than per frame.
+func _gpu_flood_fill(sx: int, sy: int, elem: int) -> void:
+	if not _gpu_ready:
+		return
+	if sx < 0 or sy < 0 or sx >= _gpu_w or sy >= _gpu_h:
+		return
+
+	var w := _gpu_w
+	var h := _gpu_h
+	var cells := _rd.texture_get_data(_tex[_cur], 0).to_int32_array()
+	var target := cells[sy * w + sx] & 63
+	if target == elem:
+		return
+
+	# Stack of linear indices; each entry seeds one horizontal run.
+	var stack := PackedInt32Array([sy * w + sx])
+	while not stack.is_empty():
+		var seed := stack[stack.size() - 1]
+		stack.remove_at(stack.size() - 1)
+		var y := seed / w
+		var row := y * w
+		if (cells[seed] & 63) != target:
+			continue
+
+		# Expand the run to both ends of the contiguous target span.
+		var left := seed - row
+		while left > 0 and (cells[row + left - 1] & 63) == target:
+			left -= 1
+		var right := seed - row
+		while right < w - 1 and (cells[row + right + 1] & 63) == target:
+			right += 1
+
+		for x in range(left, right + 1):
+			cells[row + x] = elem
+
+		# Seed one entry per contiguous run on the rows above and below.
+		for ny: int in [y - 1, y + 1]:
+			if ny < 0 or ny >= h:
+				continue
+			var nrow: int = ny * w
+			var x := left
+			while x <= right:
+				if (cells[nrow + x] & 63) == target:
+					stack.append(nrow + x)
+					while x <= right and (cells[nrow + x] & 63) == target:
+						x += 1
+				else:
+					x += 1
+
+	_rd.texture_update(_tex[_cur], 0, cells.to_byte_array())
 
 
 func _gpu_clear() -> void:
