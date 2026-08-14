@@ -68,6 +68,12 @@ boils wherever it gets hot enough and freezes wherever it gets cold enough, and 
 melts wherever it is warm. **Heat** in the World group draws the temperature field
 instead of the materials: blue cold, grey room temperature, red through white hot.
 
+Cells also carry a **pressure**. Explosions drive a spike into the field, it
+spreads outward as a wave and bleeds off over about a second, and the movement pass
+shoves material down the gradient — so a charge buried in a sand bank blows a crater
+and throws the sand outward instead of merely recolouring it. **Force** draws the
+pressure field: teal is suction, white a blast front.
+
 One consequence worth knowing: ice is no longer permanent. A block left in open air
 warms up and melts, where before it only melted on contact with specific materials.
 
@@ -102,6 +108,14 @@ with the material it moves, so heat travels with the stuff that is flowing, and
 `store()` in the reaction pass writes the tick's temperature back for every rule —
 which is why an element change carries its heat across for free, and boiling water
 becomes steam at the water's own temperature.
+
+Bits 24–31 hold pressure in quarter units, offset so it can be negative. Its decay
+is *subtractive* rather than proportional, which is the same lesson the temperature
+field taught in a different form: a value scaled by 0.95 each tick stalls forever
+on a rounding boundary, whereas subtracting a fixed amount always reaches zero.
+Unlike temperature, pressure stays with the *space* rather than the material, so
+the movement pass deliberately leaves it behind when it moves a cell — otherwise a
+blast front would be carried around by the debris it just threw.
 
 Sources cost no extra memory
 and need no new element ids; the movement pass loads them as already-moved so
@@ -186,7 +200,8 @@ Demos: `sand`, `liquids`, `fire`, `boom`, `boom2`, `lava`, `tree`, `magic`,
 `stress`, `brushes` (the three stroke profiles), `fillbox` (a divided container for
 testing fill), `sources` (water, sand and fire emitters), `bounds` (material
 heading for the floor and gas for the ceiling), `c4` (three charges lit at the
-scale a player actually paints them) and `heat` (lava and ice in one basin). Add `--test-saveload` to exercise a save → clear → load round
+scale a player actually paints them), `heat` (lava and ice in one basin) and
+`blast` (a charge buried under a sand bank). Add `--test-saveload` to exercise a save → clear → load round
 trip, `--test-fill=x,y[,element]` to seed a bucket fill mid-run, and
 `--resize=1400x900,1700x1000` to drive one or more window resizes (spread through
 the first half of the frame budget).
@@ -194,7 +209,9 @@ the first half of the frame budget).
 Also `--solid=floor,ceiling` to start with solid edges, `--hide-ui` to drop the
 floating panel (the only way to see what is happening at the very bottom of the
 canvas), `--collapsed` to start with the panel collapsed, `--panel-at=x,y` to
-place it (the same path a drag uses), and `--heat` to start in heat view.
+place it (the same path a drag uses), and `--heat` / `--force` to start in the
+temperature or pressure overlay. A blast decays in about a second, so capture it
+within a dozen ticks of detonation or the field will already be flat.
 
 The window renders uncapped, so `--frames=N` is *not* N simulation ticks; the
 screenshot log prints the actual tick count and the final grid size.

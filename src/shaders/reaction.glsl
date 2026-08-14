@@ -345,8 +345,36 @@ float conductivity(uint e) {
 	return 0.22;
 }
 
+/* ---------------------------- Pressure ---------------------------- */
+//
+// Bits 24-31, in quarter units offset by 128. Explosions drive a spike
+// in, it spreads outward as a wave, and the movement pass shoves
+// material down the gradient. Decay is subtractive so a value always
+// reaches zero rather than stalling on a rounding boundary.
+
+const int PRESS_OFFSET = 128;
+const float BLAST_P = 26.0;
+
+float g_press;
+
+float press_of_raw(uint r) {
+	return float(int((r >> 24) & 0xFFu) - PRESS_OFFSET) * 0.25;
+}
+
+uint press_bits(float p) {
+	return uint(clamp(int(round(p * 4.0)) + PRESS_OFFSET, 0, 255)) << 24;
+}
+
+// Outside the grid reads as zero, so the world's edges vent a blast
+// rather than reflecting it back inward.
+float Press(ivec2 p) {
+	if (!in_grid(p)) return 0.0;
+	return press_of_raw(imageLoad(src_grid, p).r);
+}
+
 void store(uint e) {
-	imageStore(dst_grid, P, uvec4(e | temp_bits(g_temp), 0u, 0u, 0u));
+	imageStore(dst_grid, P, uvec4(e | temp_bits(g_temp) | press_bits(g_press),
+		0u, 0u, 0u));
 }
 
 void main() {
@@ -373,6 +401,20 @@ void main() {
 		g_temp = t;
 	}
 
+	// Pressure spreads as a wave and bleeds off. Subtracting a fixed
+	// amount guarantees it settles back to zero.
+	{
+		float p = press_of_raw(raw);
+		float around =
+			Press(P + ivec2(0, 1)) + Press(P + ivec2(0, -1)) +
+			Press(P + ivec2(-1, 0)) + Press(P + ivec2(1, 0));
+		// Spread hard so the front actually travels, and bleed off slowly
+		// enough that a blast lasts about a second rather than two ticks.
+		p += 0.55 * (around * 0.25 - p);
+		float decayed = p * 0.97;
+		g_press = sign(decayed) * max(abs(decayed) - 0.15, 0.0);
+	}
+
 	// A source is a fixed feature of the world: it never moves, never
 	// reacts, and never burns away. Only the eraser removes it. Emission
 	// itself is handled from the receiving background cell below, so
@@ -380,7 +422,8 @@ void main() {
 	// intact - this is the only place it could be lost, since the
 	// reaction pass rewrites every cell.
 	if ((raw & EMITTER_BIT) != 0u) {
-		imageStore(dst_grid, P, uvec4(e | EMITTER_BIT | temp_bits(g_temp), 0u, 0u, 0u));
+		imageStore(dst_grid, P, uvec4(
+			e | EMITTER_BIT | temp_bits(g_temp) | press_bits(g_press), 0u, 0u, 0u));
 		return;
 	}
 
@@ -668,6 +711,7 @@ void main() {
 		// possible star particle) is resolved by the CPU from the event.
 		if (rnd100_at(P, SALT_GUNP) < 95u && borders4_at(P, EL_FIRE)) {
 			emit_event(EV_GUNPOWDER, P, 0u);
+			g_press = max(g_press, 20.0);
 			store(EL_FIRE);
 			return;
 		}
@@ -698,6 +742,7 @@ void main() {
 		if (!surrounded8_at(P, EL_NITRO) && borders8_at(P, EL_FIRE)) {
 			if (rnd100_at(P, SALT_NITROIGN) < 30u) {
 				emit_event(EV_NITRO, P, 0u);
+				g_press = max(g_press, BLAST_P);
 				store(EL_FIRE);
 				return;
 			}
@@ -717,6 +762,7 @@ void main() {
 	case EL_C4: {
 		if (rnd100_at(P, SALT_C4) < 60u && borders4_at(P, EL_FIRE)) {
 			emit_event(EV_C4, P, 0u);
+			g_press = max(g_press, BLAST_P);
 		}
 		break;
 	}

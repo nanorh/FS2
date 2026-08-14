@@ -66,6 +66,14 @@ uint temp_bits(int celsius) {
 	return uint(clamp(celsius * 10 + TEMP_OFFSET, 0, 65535)) << 8;
 }
 
+// Bits 24-31: pressure in quarter units, offset by 128.
+const int PRESS_OFFSET = 128;
+const float BLAST_PRESSURE = 28.0;
+
+uint press_bits(float p) {
+	return uint(clamp(int(round(p * 4.0)) + PRESS_OFFSET, 0, 255)) << 24;
+}
+
 uint pcg(uint v) {
 	v = v * 747796405u + 2891336453u;
 	uint w = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
@@ -91,9 +99,11 @@ void main() {
 
 	uint cell = imageLoad(grid, p).r;
 	uint elem = cell & 63u;
-	// Keep the source bit and whatever temperature is already here; a
-	// paint replaces both.
-	uint extra = cell & 0xFFFFFF80u;
+	// Source bit and temperature: a paint replaces both.
+	uint extra = cell & 0x00FFFF80u;
+	// Pressure belongs to the space rather than the material, so it
+	// survives an ordinary paint and only a blast overwrites it.
+	uint press = cell & 0xFF000000u;
 	bool changed = false;
 	vec2 pf = vec2(p) + vec2(0.5);
 
@@ -142,10 +152,13 @@ void main() {
 
 		elem = uint(stamp_elem);
 		extra = ((flags & 4) != 0 ? EMITTER_BIT : 0u) | temp_bits(spawn_temp(elem));
+		if ((flags & 8) != 0) {
+			press = press_bits(BLAST_PRESSURE);
+		}
 		changed = true;
 	}
 
 	if (changed) {
-		imageStore(grid, p, uvec4(elem | extra, 0u, 0u, 0u));
+		imageStore(grid, p, uvec4(elem | extra | press, 0u, 0u, 0u));
 	}
 }

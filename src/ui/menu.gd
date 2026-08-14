@@ -20,6 +20,7 @@ signal speed_changed(fps: int)
 signal solid_floor_changed(enabled: bool)
 signal solid_ceiling_changed(enabled: bool)
 signal heat_view_changed(enabled: bool)
+signal pressure_view_changed(enabled: bool)
 signal clear_pressed
 signal save_pressed
 signal load_pressed
@@ -360,6 +361,14 @@ func _build_bounds() -> Control:
 	UITheme.style_ghost(heat, UITheme.ACCENT)
 	heat.toggled.connect(func(on: bool) -> void: heat_view_changed.emit(on))
 	col.add_child(heat)
+
+	var press := Button.new()
+	press.text = "Force"
+	press.toggle_mode = true
+	press.tooltip_text = "Pressure view\nDraw the pressure field: teal is suction, white a blast front. Overrides heat view."
+	UITheme.style_ghost(press, UITheme.ACCENT)
+	press.toggled.connect(func(on: bool) -> void: pressure_view_changed.emit(on))
+	col.add_child(press)
 
 	return _column(UITheme.caption("World"), col)
 

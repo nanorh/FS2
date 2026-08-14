@@ -347,7 +347,9 @@ func _act_nitro(p: Particle, sim: FallingSand) -> void:
 	var y0 := p.y
 	p.x += p.vx
 	p.y += p.vy
-	sim.stamp_segment(p.color, int(x0), int(y0), int(p.x), int(p.y), _stroke_radius(p.size))
+	# Nitro streaks carry the blast front with them.
+	sim.stamp_segment(p.color, int(x0), int(y0), int(p.x), int(p.y),
+		_stroke_radius(p.size), true, false, true)
 	if p.iters % 5 == 0:
 		p.size /= 1.3
 	if p.iters % 15 == 0:
@@ -357,7 +359,7 @@ func _act_nitro(p: Particle, sim: FallingSand) -> void:
 
 
 func _act_napalm(p: Particle, sim: FallingSand) -> void:
-	sim.stamp_circle(p.color, int(p.x), int(p.y), int(p.size))
+	sim.stamp_circle(p.color, int(p.x), int(p.y), int(p.size), true, false, true)
 	p.x += p.vx
 	p.y += p.vy
 	p.size *= 1.0 + _rng.randf() * 0.1
@@ -366,7 +368,7 @@ func _act_napalm(p: Particle, sim: FallingSand) -> void:
 
 
 func _act_c4(p: Particle, sim: FallingSand) -> void:
-	sim.stamp_circle(p.color, int(p.x), int(p.y), int(p.size))
+	sim.stamp_blast(p.color, int(p.x), int(p.y), int(p.size))
 	if p.iters % 3 == 0:
 		p.size /= 3.0
 		if p.size <= 1.0:
@@ -407,7 +409,7 @@ func _act_magic2(p: Particle, sim: FallingSand) -> void:
 
 
 func _act_methane(p: Particle, sim: FallingSand) -> void:
-	sim.stamp_circle(p.color, int(p.x), int(p.y), int(p.size))
+	sim.stamp_circle(p.color, int(p.x), int(p.y), int(p.size), true, false, true)
 	if p.iters > 2:
 		_free_particle(p)
 
@@ -475,6 +477,6 @@ func _act_rocket(p: Particle, sim: FallingSand) -> void:
 
 
 func _act_nuke(p: Particle, sim: FallingSand) -> void:
-	sim.stamp_circle(p.color, int(p.x), int(p.y), int(p.size))
+	sim.stamp_blast(p.color, int(p.x), int(p.y), int(p.size))
 	if p.iters > 4:
 		_free_particle(p)

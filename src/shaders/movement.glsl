@@ -200,10 +200,32 @@ uint ce[4];
 // temperature. It travels with the material, so heat is carried by the
 // stuff that is moving rather than staying put in the grid.
 uint cpay[4];
+// Pressure belongs to the space, not to the material, so unlike the
+// payload it stays put when material moves through.
+uint cpress[4];
 bool cmoved[4];
 bool cvalid[4];
 bool cdirty[4];
-const uint PAYLOAD_MASK = 0xFFFFFF80u;
+const uint PAYLOAD_MASK = 0x00FFFF80u;
+const uint PRESS_MASK = 0xFF000000u;
+const int PRESS_OFFSET = 128;
+// A gradient this steep across one cell shoves material along it.
+const float PRESS_PUSH = 1.5;
+
+float press_at(int i) {
+	return float(int(cpress[i] >> 24) - PRESS_OFFSET) * 0.25;
+}
+
+// What a blast can drive material through.
+bool displaceable(uint e) {
+	return e == EL_BACKGROUND || e == EL_STEAM || e == EL_METHANE || e == EL_FIRE;
+}
+
+// Immovable regardless of pressure.
+bool anchored(uint e) {
+	return e == EL_WALL || e == EL_OOB || e == EL_WAX || e == EL_FUSE
+		|| e == EL_SPOUT || e == EL_WELL || e == EL_TORCH;
+}
 
 bool in_grid(ivec2 p) {
 	return p.x >= 0 && p.y >= 0 && p.x < grid_size.x && p.y < grid_size.y;
@@ -241,6 +263,34 @@ void swap_cells(int a, int b) {
 bool roll_grav(int i) {
 	return rnd100_at(cpos[i], SALT_GRAV) < grav_chance(ce[i]);
 }
+
+// Pressure pushes material from the higher-pressure cell toward the
+// lower one, in any direction, which is what turns a blast into
+// something that throws debris rather than just recolouring it.
+// Returns true if it moved anything.
+bool resolve_pressure(int a, int b) {
+	if (!cvalid[a] || !cvalid[b]) return false;
+	if (cmoved[a] || cmoved[b]) return false;
+
+	int from = a;
+	int to = b;
+	float dp = press_at(a) - press_at(b);
+	if (dp < 0.0) {
+		from = b;
+		to = a;
+		dp = -dp;
+	}
+	if (dp < PRESS_PUSH) return false;
+
+	uint moving = ce[from];
+	if (moving == EL_BACKGROUND || anchored(moving)) return false;
+	if (!displaceable(ce[to])) return false;
+
+	if (ce[to] == EL_BACKGROUND) move_cell(from, to);
+	else swap_cells(from, to);
+	return true;
+}
+
 
 // Vertical resolution for one column: t = top index, b = bottom index.
 void resolve_vertical(int t, int b) {
@@ -397,15 +447,23 @@ void main() {
 			uint raw = imageLoad(grid, cpos[i]).r;
 			ce[i] = raw & 63u;
 			cpay[i] = raw & PAYLOAD_MASK;
+			cpress[i] = raw & PRESS_MASK;
 			cmoved[i] = (raw & (MOVED_BIT | EMITTER_BIT)) != 0u;
 		} else {
 			ce[i] = EL_OOB;
 			cpay[i] = 0u;
+			cpress[i] = uint(PRESS_OFFSET) << 24;
 			cmoved[i] = true;
 		}
 	}
 
 	uint order = pcg(uint(block.y * 4096 + block.x) ^ pcg(SALT_ORDER ^ (params.tick * 0x9E3779B9u) ^ params.pass_index));
+
+	// Pressure first: a blast overrides gravity for as long as it lasts.
+	resolve_pressure(0, 1);
+	resolve_pressure(2, 3);
+	resolve_pressure(0, 2);
+	resolve_pressure(1, 3);
 
 	// Vertical: columns in random order.
 	if ((order & 1u) == 0u) {
@@ -438,7 +496,7 @@ void main() {
 
 	for (int i = 0; i < 4; i++) {
 		if (cvalid[i] && cdirty[i]) {
-			uint raw = ce[i] | cpay[i] | (cmoved[i] ? MOVED_BIT : 0u);
+			uint raw = ce[i] | cpay[i] | cpress[i] | (cmoved[i] ? MOVED_BIT : 0u);
 			imageStore(grid, cpos[i], uvec4(raw, 0u, 0u, 0u));
 		}
 	}

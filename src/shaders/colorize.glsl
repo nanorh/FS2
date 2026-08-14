@@ -11,13 +11,24 @@ layout(set = 0, binding = 0, r32ui) uniform restrict readonly uimage2D grid;
 layout(set = 0, binding = 1, rgba8) uniform restrict writeonly image2D display_img;
 
 layout(push_constant) uniform Params {
-	uint heat_view; // 1 = draw the temperature field instead of materials
+	uint view_mode; // 0 materials, 1 temperature, 2 pressure
 	uint pad0;
 	uint pad1;
 	uint pad2;
 } params;
 
 const int TEMP_OFFSET = 5000; // temperature is stored in tenths of a degree
+const int PRESS_OFFSET = 128; // pressure is stored in quarter units
+
+// Suction teal through neutral to blast white.
+vec3 pressure_ramp(float p) {
+	if (p < 0.0) {
+		return mix(vec3(0.10, 0.12, 0.14), vec3(0.0, 0.65, 0.60),
+			clamp(-p / 12.0, 0.0, 1.0));
+	}
+	return mix(vec3(0.10, 0.12, 0.14), vec3(1.0, 0.95, 0.85),
+		clamp(p / 24.0, 0.0, 1.0));
+}
 
 // Cold blue through room-temperature grey to red, orange and white hot.
 vec3 heat_ramp(float c) {
@@ -80,9 +91,14 @@ void main() {
 	if (p.x >= size.x || p.y >= size.y) return;
 	uint raw = imageLoad(grid, p).r;
 
-	if (params.heat_view != 0u) {
+	if (params.view_mode == 1u) {
 		float celsius = float(int((raw >> 8) & 0xFFFFu) - TEMP_OFFSET) * 0.1;
 		imageStore(display_img, p, vec4(heat_ramp(celsius), 1.0));
+		return;
+	}
+	if (params.view_mode == 2u) {
+		float press = float(int((raw >> 24) & 0xFFu) - PRESS_OFFSET) * 0.25;
+		imageStore(display_img, p, vec4(pressure_ramp(press), 1.0));
 		return;
 	}
 

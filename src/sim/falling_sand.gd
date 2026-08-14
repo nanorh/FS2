@@ -35,14 +35,28 @@ const TEMP_SHIFT := 8
 const TEMP_OFFSET := 5000
 const AMBIENT_C := 20
 
+# Bits 24-31: pressure, in quarter units offset by 128, so it can be
+# negative (suction). Decay is subtractive rather than proportional so a
+# value always reaches zero instead of stalling on a rounding boundary,
+# the way whole-degree temperature did.
+const PRESS_SHIFT := 24
+const PRESS_OFFSET := 128
+
 # A completely empty cell at room temperature. Textures are filled with
 # this rather than zero, since zero would read as -500 C everywhere.
 static func ambient_cell() -> int:
-	return (AMBIENT_C * 10 + TEMP_OFFSET) << TEMP_SHIFT
+	return ((AMBIENT_C * 10 + TEMP_OFFSET) << TEMP_SHIFT) | (PRESS_OFFSET << PRESS_SHIFT)
 
 
-# Show the temperature field instead of the materials.
+# Overlays: 0 materials, 1 temperature, 2 pressure.
 var heat_view := false
+var pressure_view := false
+
+
+func view_mode() -> int:
+	if pressure_view:
+		return 2
+	return 1 if heat_view else 0
 
 const MAX_COMMANDS := 1024
 const CMD_INTS := 8
@@ -59,6 +73,7 @@ const CMD_SPRAY := 4
 const FLAG_OVERWRITE := 1
 const FLAG_SKIP_WALL := 2
 const FLAG_EMITTER := 4
+const FLAG_PRESSURE := 8
 
 # Event types (must match reaction.glsl)
 const EV_NITRO := 1
@@ -162,12 +177,16 @@ func _exit_tree() -> void:
 # Main-thread API
 # ------------------------------------------------------------------
 
-func stamp_circle(elem: int, x: int, y: int, radius: int, overwrite := true, skip_wall := false) -> void:
-	_push_cmd(CMD_CIRCLE, elem, _flags(overwrite, skip_wall), x, y, 0, 0, radius)
+func stamp_circle(elem: int, x: int, y: int, radius: int, overwrite := true,
+		skip_wall := false, pressure := false) -> void:
+	var f := _flags(overwrite, skip_wall) | (FLAG_PRESSURE if pressure else 0)
+	_push_cmd(CMD_CIRCLE, elem, f, x, y, 0, 0, radius)
 
 
-func stamp_segment(elem: int, x0: int, y0: int, x1: int, y1: int, radius: int, overwrite := true, skip_wall := false) -> void:
-	_push_cmd(CMD_SEGMENT, elem, _flags(overwrite, skip_wall), x0, y0, x1, y1, radius)
+func stamp_segment(elem: int, x0: int, y0: int, x1: int, y1: int, radius: int,
+		overwrite := true, skip_wall := false, pressure := false) -> void:
+	var f := _flags(overwrite, skip_wall) | (FLAG_PRESSURE if pressure else 0)
+	_push_cmd(CMD_SEGMENT, elem, f, x0, y0, x1, y1, radius)
 
 
 # Rect covers [x0, x1) x [y0, y1); density is a 0-99 per-cell chance.
@@ -186,6 +205,13 @@ func stamp_stroke(elem: int, kind: int, x0: int, y0: int, x1: int, y1: int,
 		radius: int, overwrite := true, emitter := false) -> void:
 	var f := _flags(overwrite, false) | (FLAG_EMITTER if emitter else 0)
 	_push_cmd(kind, elem, f, x0, y0, x1, y1, radius)
+
+
+# Like stamp_circle, but also drives a pressure spike into the area, so
+# an explosion shoves material outward instead of just recolouring it.
+func stamp_blast(elem: int, x: int, y: int, radius: int) -> void:
+	_push_cmd(CMD_CIRCLE, elem, _flags(true, false) | FLAG_PRESSURE,
+		x, y, 0, 0, radius)
 
 
 # Bucket fill: replaces the connected region of whatever element sits at
@@ -574,7 +600,7 @@ func _gpu_frame(cmds: PackedInt32Array, cmd_count: int, ticks: int, flags: int, 
 					data.decode_u32(base + 12)))
 
 	_reap_retired_displays()
-	_run_colorize(groups_x, groups_y, heat_view)
+	_run_colorize(groups_x, groups_y, view_mode())
 
 	if collected.size() > 0:
 		_mutex.lock()
@@ -582,11 +608,11 @@ func _gpu_frame(cmds: PackedInt32Array, cmd_count: int, ticks: int, flags: int, 
 		_mutex.unlock()
 
 
-func _run_colorize(groups_x: int, groups_y: int, heat: bool) -> void:
+func _run_colorize(groups_x: int, groups_y: int, mode: int) -> void:
 	var cl := _rd.compute_list_begin()
 	_rd.compute_list_bind_compute_pipeline(cl, _colorize_pipeline)
 	_rd.compute_list_bind_uniform_set(cl, _colorize_sets[_cur], 0)
-	var pc := _push_constant_ints(1 if heat else 0, 0, 0, 0)
+	var pc := _push_constant_ints(mode, 0, 0, 0)
 	_rd.compute_list_set_push_constant(cl, pc, pc.size())
 	_rd.compute_list_dispatch(cl, groups_x, groups_y, 1)
 	_rd.compute_list_end()
