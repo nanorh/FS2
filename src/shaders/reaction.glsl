@@ -466,38 +466,48 @@ void main() {
 		float right = Temp(P + ivec2(1, 0));
 
 		if (e == EL_BACKGROUND) {
-			// Air moves heat by convection, not conduction: warm air
-			// rises. Weighting the exchange heavily toward the cell
-			// below makes warmth climb, and that is the only way an
-			// enclosed space ever fills. Pure diffusion spreads about
-			// sqrt(time) cells - roughly seven of them in a thousand
-			// ticks - so a torch would heat its immediate neighbours
-			// and a room would stay cold indefinitely.
+			// Air carries heat rather than conducting it. Diffusion of
+			// any strength spreads as the square root of time, so it can
+			// never cross a room, and adding a loss term to make it
+			// dissipate shortens its reach further still - the two
+			// requirements fight each other. Transport settles it: heat
+			// moves about a cell a tick regardless of distance, so its
+			// reach is speed over loss rather than the square root of
+			// diffusivity over loss, and it can both travel far and fade.
+			// Weighted toward the cell below, so warmth climbs: this is
+			// a stand-in for warm air rising. The weights sum to one, so
+			// a cell only ever moves toward an average of its
+			// neighbours - it can never exceed the hottest of them, and
+			// no energy appears from nowhere.
 			//
-			// The weights sum to one, so this stays a weighted average
-			// of the neighbours: a cell can never exceed its hottest
-			// neighbour and no energy can appear from nowhere.
+			// A true buoyancy-driven scheme was tried and does not work
+			// at this level. Deriving a cell's own rise from its own
+			// temperature cannot start: air directly above a flame
+			// matches the cold air flanking it, so it reads as neutrally
+			// buoyant and refuses to move. Making the hot cell below
+			// simply push its heat up instead does start, but is not
+			// conservative - each cell pulls from below without the
+			// below cell losing anything - so the whole column, and then
+			// the room, climbs to flame temperature.
 			float avg = 0.54 * below + 0.18 * (left + right) + 0.10 * above;
 			t += 0.62 * (avg - t);
 		} else {
 			t += conductivity(e) * ((below + above + left + right) * 0.25 - t);
 		}
-		// Still air does not shed heat to anywhere: it only conducts to
-		// what it touches, and the edges of the world are the sink,
-		// since Temp() reads room temperature outside the grid.
+		// Air and gas give heat up to the wider world, so warmth fades
+		// instead of standing where it was made forever. Solids do not:
+		// a cell buried inside a body touches no room to lose heat to,
+		// and letting every cell leak was what made a block melt all at
+		// once rather than from its surface inward.
 		//
-		// Air used to lose 4% a tick to the room while conducting at
-		// only 0.10, which gives heat a decay length through air of
-		// under a single cell. Nothing could warm a space it was not
-		// touching, so a torch heated the cells beside it and an
-		// enclosed room stayed cold; and conversely a pocket sealed
-		// inside ice was warmed forever by a room it had no contact
-		// with. Removing the term fixes both: heat now fills an
-		// enclosure, and trapped air settles to whatever surrounds it.
-		//
-		// Gases keep the term, as a stand-in for their mixing and
-		// venting away.
-		if (e == EL_STEAM || e == EL_METHANE) {
+		// Air's rate is small on purpose. Since air transports heat at
+		// about a cell a tick, warmth still reaches hundreds of cells
+		// before fading, while a pocket sealed inside ice settles within
+		// a tenth of a degree of the ice rather than being warmed
+		// forever by a room it never touches.
+		if (e == EL_BACKGROUND) {
+			t += 0.002 * (AMBIENT_C - t);
+		} else if (e == EL_STEAM || e == EL_METHANE) {
 			t += 0.04 * (AMBIENT_C - t);
 		}
 		int reservoir = source_temp(e);

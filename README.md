@@ -271,13 +271,22 @@ tuning:
   tick of acceleration, and that the Margolus partition lets a cell take at most
   one step per pass in a given direction. Going further likely needs velocity to
   carry material along a whole ray per tick rather than one block-step at a time.
-- **An enclosed space warms along the plume, but does not fill evenly.** Air moves
-  heat upward by a convective bias, so a torch sends a hot column to the ceiling
-  and heats what that column touches. It does not fill the room, because filling
-  one needs a circulation — rise, spread along the ceiling, sink at the walls,
-  return — and sideways transport here is still diffusion, which spreads as the
-  square root of time and cannot cross hundreds of cells. Doing it properly means
-  treating air as a fluid driven by buoyancy, using the velocity field.
+- **Heat rises and fades, but does not fill a space sideways.** A torch sends a hot
+  column to the ceiling and the warmth dies away behind it, but it will not warm a
+  room evenly. Sideways transport is diffusion, and diffusion spreads as the square
+  root of time — it cannot cross hundreds of cells whatever its rate. Filling a
+  room needs heat to be *carried*, which needs a circulation: rise, spread along
+  the ceiling, sink at the cool walls, return.
+
+  Two ways of getting that were tried in this cell-local form and neither works.
+  Deriving a cell's rise from its own buoyancy cannot start, because air directly
+  above a flame matches the cold air flanking it and so reads as neutrally
+  buoyant — only the fringes of an existing gradient ever move. Letting the hot
+  cell below push its heat upward instead does start, but is not conservative:
+  every cell draws from below without the cell below losing anything, so the
+  column and then the room climb to flame temperature. A correct version needs air
+  treated as a fluid with a velocity field and a divergence-free projection, which
+  is a real solver rather than a tweak to the conduction rule.
 - **A gunpowder explosion that fails to ignite puts one grain back rather than
   painting a 3×3 of fresh powder.** The original scatters unburnt powder across
   the blast square, which is fine when cells detonate one at a time down a
