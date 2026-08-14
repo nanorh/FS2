@@ -74,6 +74,11 @@ shoves material down the gradient — so a charge buried in a sand bank blows a 
 and throws the sand outward instead of merely recolouring it. **Force** draws the
 pressure field: teal is suction, white a blast front.
 
+Liquids also carry a **hydrostatic head**: a liquid cell rests at the pressure of
+the liquid above it plus its own weight, so a tall tank is under real pressure at
+its base and a breach low in its wall pushes water out on an arc rather than
+letting it run down the outside. See the limitation note at the end of this file.
+
 One consequence worth knowing: ice is no longer permanent. A block left in open air
 warms up and melts, where before it only melted on contact with specific materials.
 
@@ -201,7 +206,7 @@ Demos: `sand`, `liquids`, `fire`, `boom`, `boom2`, `lava`, `tree`, `magic`,
 testing fill), `sources` (water, sand and fire emitters), `bounds` (material
 heading for the floor and gas for the ceiling), `c4` (three charges lit at the
 scale a player actually paints them), `heat` (lava and ice in one basin) and
-`blast` (a charge buried under a sand bank). Add `--test-saveload` to exercise a save → clear → load round
+`blast` (a charge buried under a sand bank) and `tank` (a breached water tank). Add `--test-saveload` to exercise a save → clear → load round
 trip, `--test-fill=x,y[,element]` to seed a bucket fill mid-run, and
 `--resize=1400x900,1700x1000` to drive one or more window resizes (spread through
 the first half of the frame budget).
@@ -232,5 +237,14 @@ tuning:
 - Rules of the form "convert one random neighbour" are approximated by dividing the
   probability by the neighbour count, which matches the rate but not the exact
   correlation between neighbours.
+- **A breached tank arcs, it does not jet.** Hydrostatic pressure builds correctly
+  and pushes water out of the breach, but the arc stays shallow, because cells
+  carry no momentum. A gradient accelerates material only while the material is
+  inside the gradient, and the instant water clears the breach there is nothing
+  left pushing it, so it goes ballistic immediately. The one-move-per-tick cap
+  compounds this by holding horizontal speed to at most the falling speed.
+  Letting a steep gradient move material several times per tick was tried and
+  changed nothing, for the same reason. A real jet needs per-cell velocity, which
+  is a substantially larger change and has no spare bits left in the cell.
 - The MYSTERY + FIRE canvas scramble is a butterfly-swap approximation of a
   Fisher-Yates shuffle, which cannot run sequentially on the GPU.

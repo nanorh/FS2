@@ -372,6 +372,25 @@ float Press(ivec2 p) {
 	return press_of_raw(imageLoad(src_grid, p).r);
 }
 
+bool is_liquid(uint e) {
+	return e == EL_WATER || e == EL_SALT_WATER || e == EL_OIL || e == EL_LAVA;
+}
+
+// Hydrostatic rest pressure: a liquid cell sits at the pressure of the
+// liquid directly above it plus its own weight, and a free surface sits
+// at zero. Each tick this reads the previous tick's value from above, so
+// a column fills in downward at one cell per tick and settles into the
+// right profile without ever needing to sum the whole column.
+const float LIQUID_WEIGHT = 0.25;
+const float MAX_HYDRO = 20.0;
+
+float hydro_rest(uint e) {
+	if (!is_liquid(e)) return 0.0;
+	ivec2 up = P + ivec2(0, -1);
+	if (!is_liquid(E(up))) return 0.0;
+	return min(Press(up) + LIQUID_WEIGHT, MAX_HYDRO);
+}
+
 void store(uint e) {
 	imageStore(dst_grid, P, uvec4(e | temp_bits(g_temp) | press_bits(g_press),
 		0u, 0u, 0u));
@@ -408,11 +427,28 @@ void main() {
 		float around =
 			Press(P + ivec2(0, 1)) + Press(P + ivec2(0, -1)) +
 			Press(P + ivec2(-1, 0)) + Press(P + ivec2(1, 0));
-		// Spread hard so the front actually travels, and bleed off slowly
-		// enough that a blast lasts about a second rather than two ticks.
+		// Spread hard so the front actually travels. This also does the
+		// horizontal equalisation a connected body of liquid needs.
 		p += 0.55 * (around * 0.25 - p);
-		float decayed = p * 0.97;
-		g_press = sign(decayed) * max(abs(decayed) - 0.15, 0.0);
+		// Settle toward the hydrostatic rest value rather than toward
+		// zero: for air and solids that is zero and nothing changes, but
+		// a liquid keeps the weight of everything above it. Whatever is
+		// left over is the transient blast component, and that bleeds
+		// off - subtractively, so it always reaches rest.
+		float rest = hydro_rest(e);
+		float over = p - rest;
+		// Liquid holds its head; air does not. Without this, pressure
+		// bleeds out of a tank into the air just outside the breach and
+		// equalises it, destroying the very gradient that should be
+		// driving the flow. Damping air hard keeps the step at the
+		// opening sharp, and a blast still crosses open space because it
+		// is an order of magnitude larger than any hydrostatic head.
+		if (is_liquid(e)) {
+			over = sign(over) * max(abs(over) * 0.97 - 0.15, 0.0);
+		} else {
+			over = sign(over) * max(abs(over) * 0.82 - 0.6, 0.0);
+		}
+		g_press = rest + over;
 	}
 
 	// A source is a fixed feature of the world: it never moves, never

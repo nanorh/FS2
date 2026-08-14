@@ -209,8 +209,10 @@ bool cdirty[4];
 const uint PAYLOAD_MASK = 0x00FFFF80u;
 const uint PRESS_MASK = 0xFF000000u;
 const int PRESS_OFFSET = 128;
-// A gradient this steep across one cell shoves material along it.
-const float PRESS_PUSH = 1.5;
+// A gradient this steep across one cell shoves material along it. High
+// enough that the gentle head of a shallow puddle does not spray itself
+// sideways, low enough that a deep tank jets from a breach.
+const float PRESS_PUSH = 3.0;
 
 float press_at(int i) {
 	return float(int(cpress[i] >> 24) - PRESS_OFFSET) * 0.25;
@@ -286,6 +288,11 @@ bool resolve_pressure(int a, int b) {
 	if (moving == EL_BACKGROUND || anchored(moving)) return false;
 	if (!displaceable(ce[to])) return false;
 
+	// Note: this respects the one-move-per-tick cap. Letting a steep
+	// gradient move material repeatedly within a tick was tried and
+	// bought nothing, because material carries no momentum: a gradient
+	// accelerates it only while it is inside the gradient, and the
+	// moment it leaves the breach there is nothing left to push it.
 	if (ce[to] == EL_BACKGROUND) move_cell(from, to);
 	else swap_cells(from, to);
 	return true;

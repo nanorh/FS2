@@ -330,6 +330,15 @@ func _setup_demo(name: String) -> void:
 			sim.stamp_rect(Elements.SAND, 400, 420, 900, 632, 100)
 			sim.stamp_circle(Elements.NITRO, 650, 600, 18)
 			sim.stamp_circle(Elements.FIRE, 650, 620, 4)
+		"tank":
+			# A tall tank breached low on its right wall. With
+			# hydrostatic pressure the head should drive a jet clear of
+			# the wall rather than dribbling down the outside.
+			sim.stamp_segment(Elements.WALL, 200, 645, 1200, 645, 5)
+			sim.stamp_segment(Elements.WALL, 300, 120, 300, 645, 5)
+			sim.stamp_segment(Elements.WALL, 520, 120, 520, 555, 5)
+			sim.stamp_segment(Elements.WALL, 520, 580, 520, 645, 5)
+			sim.stamp_rect(Elements.WATER, 306, 130, 516, 640, 100)
 		"heat":
 			# A lava pool in a basin, an ice block, and water poured on
 			# both: conduction should melt the ice and boil the water
