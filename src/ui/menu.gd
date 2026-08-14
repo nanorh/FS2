@@ -335,7 +335,9 @@ func _refresh_speed_label() -> void:
 
 
 func _build_bounds() -> Control:
-	var col := VBoxContainer.new()
+	# Laid out in a row: stacked, these four were the tallest column on
+	# the panel and set its whole height.
+	var col := HBoxContainer.new()
 	col.add_theme_constant_override("separation", 3)
 
 	var ceiling := Button.new()
