@@ -34,6 +34,38 @@ const uint EL_WALL = 1u;
 // Bit 7 marks a cell as a fixed source of its own element.
 const uint EMITTER_BIT = 128u;
 
+// Bits 8-23 hold temperature in tenths of a degree, offset so it can go
+// below zero: stored = celsius * 10 + TEMP_OFFSET.
+const int TEMP_OFFSET = 5000;
+const int AMBIENT_C = 20;
+
+const uint EL_FIRE = 5u;
+const uint EL_ICE = 20u;
+const uint EL_CHILLED_ICE = 21u;
+const uint EL_LAVA = 22u;
+const uint EL_STEAM = 24u;
+const uint EL_CRYO = 25u;
+const uint EL_TORCH = 11u;
+
+// Freshly painted material arrives at its own natural temperature, so
+// lava is hot and ice is cold the instant you place them.
+int spawn_temp(uint e) {
+	switch (e) {
+		case EL_LAVA: return 1200;
+		case EL_TORCH: return 900;
+		case EL_FIRE: return 850;
+		case EL_STEAM: return 110;
+		case EL_ICE: return -8;
+		case EL_CHILLED_ICE: return -40;
+		case EL_CRYO: return -200;
+	}
+	return AMBIENT_C;
+}
+
+uint temp_bits(int celsius) {
+	return uint(clamp(celsius * 10 + TEMP_OFFSET, 0, 65535)) << 8;
+}
+
 uint pcg(uint v) {
 	v = v * 747796405u + 2891336453u;
 	uint w = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
@@ -59,7 +91,9 @@ void main() {
 
 	uint cell = imageLoad(grid, p).r;
 	uint elem = cell & 63u;
-	uint extra = cell & EMITTER_BIT;
+	// Keep the source bit and whatever temperature is already here; a
+	// paint replaces both.
+	uint extra = cell & 0xFFFFFF80u;
 	bool changed = false;
 	vec2 pf = vec2(p) + vec2(0.5);
 
@@ -107,7 +141,7 @@ void main() {
 		if (skip_wall && elem == EL_WALL) continue;
 
 		elem = uint(stamp_elem);
-		extra = (flags & 4) != 0 ? EMITTER_BIT : 0u;
+		extra = ((flags & 4) != 0 ? EMITTER_BIT : 0u) | temp_bits(spawn_temp(elem));
 		changed = true;
 	}
 

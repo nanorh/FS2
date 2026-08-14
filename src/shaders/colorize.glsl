@@ -10,6 +10,33 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 layout(set = 0, binding = 0, r32ui) uniform restrict readonly uimage2D grid;
 layout(set = 0, binding = 1, rgba8) uniform restrict writeonly image2D display_img;
 
+layout(push_constant) uniform Params {
+	uint heat_view; // 1 = draw the temperature field instead of materials
+	uint pad0;
+	uint pad1;
+	uint pad2;
+} params;
+
+const int TEMP_OFFSET = 5000; // temperature is stored in tenths of a degree
+
+// Cold blue through room-temperature grey to red, orange and white hot.
+vec3 heat_ramp(float c) {
+	if (c < 20.0) {
+		return mix(vec3(0.10, 0.30, 0.85), vec3(0.18, 0.18, 0.20),
+			clamp((c + 200.0) / 220.0, 0.0, 1.0));
+	}
+	if (c < 300.0) {
+		return mix(vec3(0.18, 0.18, 0.20), vec3(0.85, 0.15, 0.05),
+			clamp((c - 20.0) / 280.0, 0.0, 1.0));
+	}
+	if (c < 900.0) {
+		return mix(vec3(0.85, 0.15, 0.05), vec3(1.0, 0.72, 0.0),
+			clamp((c - 300.0) / 600.0, 0.0, 1.0));
+	}
+	return mix(vec3(1.0, 0.72, 0.0), vec3(1.0, 1.0, 0.95),
+		clamp((c - 900.0) / 500.0, 0.0, 1.0));
+}
+
 const vec3 PALETTE[34] = {
 	vec3(0.0, 0.0, 0.0),          // BACKGROUND
 	vec3(0.498, 0.498, 0.498),    // WALL
@@ -52,6 +79,13 @@ void main() {
 	ivec2 size = imageSize(grid);
 	if (p.x >= size.x || p.y >= size.y) return;
 	uint raw = imageLoad(grid, p).r;
+
+	if (params.heat_view != 0u) {
+		float celsius = float(int((raw >> 8) & 0xFFFFu) - TEMP_OFFSET) * 0.1;
+		imageStore(display_img, p, vec4(heat_ramp(celsius), 1.0));
+		return;
+	}
+
 	vec3 colour = PALETTE[min(raw & 63u, 33u)];
 	// Sources are washed toward white so they read as fixed fixtures
 	// rather than loose material of the same kind.

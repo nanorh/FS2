@@ -25,6 +25,25 @@ const MIN_DIM := 16
 # at sources instead of quietly wiping them out.
 const FILL_MASK := 0b1011_1111
 
+# Cell layout: bits 0-5 element, 6 moved-this-tick, 7 source,
+# 8-23 temperature. Temperature is stored unsigned with an offset so it
+# can go below zero: stored = celsius + TEMP_OFFSET.
+# Temperature is kept in tenths of a degree, since the slow leak toward
+# room temperature moves a cell by a fraction of a degree per tick and
+# whole degrees would round that away to nothing.
+const TEMP_SHIFT := 8
+const TEMP_OFFSET := 5000
+const AMBIENT_C := 20
+
+# A completely empty cell at room temperature. Textures are filled with
+# this rather than zero, since zero would read as -500 C everywhere.
+static func ambient_cell() -> int:
+	return (AMBIENT_C * 10 + TEMP_OFFSET) << TEMP_SHIFT
+
+
+# Show the temperature field instead of the materials.
+var heat_view := false
+
 const MAX_COMMANDS := 1024
 const CMD_INTS := 8
 const MAX_EVENTS := 4096
@@ -306,12 +325,11 @@ func _create_textures(w: int, h: int) -> void:
 		| RenderingDevice.TEXTURE_USAGE_CAN_COPY_FROM_BIT
 		| RenderingDevice.TEXTURE_USAGE_CAN_COPY_TO_BIT
 	)
-	# R32_UINT and RGBA8 are both 4 bytes per cell, so one zero-fill
-	# buffer initializes every texture.
-	var zeros := PackedByteArray()
-	zeros.resize(w * h * 4)
+	# Grids start empty but at room temperature, not at zero, which the
+	# temperature field would read as -500 C.
+	var blank := _blank_grid(w, h)
 	for i in 2:
-		_tex[i] = _rd.texture_create(fmt, RDTextureView.new(), [zeros])
+		_tex[i] = _rd.texture_create(fmt, RDTextureView.new(), [blank])
 
 	# Texture2DRD cannot expose uint formats to the canvas renderer, so
 	# the colorize pass writes this RGBA8 copy for display.
@@ -324,7 +342,17 @@ func _create_textures(w: int, h: int) -> void:
 		| RenderingDevice.TEXTURE_USAGE_SAMPLING_BIT
 		| RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT
 	)
-	_display_tex = _rd.texture_create(disp_fmt, RDTextureView.new(), [zeros])
+	var disp_zeros := PackedByteArray()
+	disp_zeros.resize(w * h * 4)
+	_display_tex = _rd.texture_create(disp_fmt, RDTextureView.new(), [disp_zeros])
+
+
+# An empty grid: every cell background at ambient temperature.
+func _blank_grid(w: int, h: int) -> PackedByteArray:
+	var cells := PackedInt32Array()
+	cells.resize(w * h)
+	cells.fill(ambient_cell())
+	return cells.to_byte_array()
 
 
 func _create_uniform_sets() -> void:
@@ -546,7 +574,7 @@ func _gpu_frame(cmds: PackedInt32Array, cmd_count: int, ticks: int, flags: int, 
 					data.decode_u32(base + 12)))
 
 	_reap_retired_displays()
-	_run_colorize(groups_x, groups_y)
+	_run_colorize(groups_x, groups_y, heat_view)
 
 	if collected.size() > 0:
 		_mutex.lock()
@@ -554,10 +582,12 @@ func _gpu_frame(cmds: PackedInt32Array, cmd_count: int, ticks: int, flags: int, 
 		_mutex.unlock()
 
 
-func _run_colorize(groups_x: int, groups_y: int) -> void:
+func _run_colorize(groups_x: int, groups_y: int, heat: bool) -> void:
 	var cl := _rd.compute_list_begin()
 	_rd.compute_list_bind_compute_pipeline(cl, _colorize_pipeline)
 	_rd.compute_list_bind_uniform_set(cl, _colorize_sets[_cur], 0)
+	var pc := _push_constant_ints(1 if heat else 0, 0, 0, 0)
+	_rd.compute_list_set_push_constant(cl, pc, pc.size())
 	_rd.compute_list_dispatch(cl, groups_x, groups_y, 1)
 	_rd.compute_list_end()
 
@@ -641,9 +671,7 @@ func _gpu_flood_fill(sx: int, sy: int, elem: int) -> void:
 func _gpu_clear() -> void:
 	if not _gpu_ready:
 		return
-	var zeros := PackedByteArray()
-	zeros.resize(_gpu_w * _gpu_h * 4)
-	_rd.texture_update(_tex[_cur], 0, zeros)
+	_rd.texture_update(_tex[_cur], 0, _blank_grid(_gpu_w, _gpu_h))
 
 
 func _gpu_save() -> void:
@@ -662,9 +690,7 @@ func _gpu_save() -> void:
 		| RenderingDevice.TEXTURE_USAGE_CAN_COPY_TO_BIT
 		| RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT
 	)
-	var zeros := PackedByteArray()
-	zeros.resize(_gpu_w * _gpu_h * 4)
-	_save_tex = _rd.texture_create(fmt, RDTextureView.new(), [zeros])
+	_save_tex = _rd.texture_create(fmt, RDTextureView.new(), [_blank_grid(_gpu_w, _gpu_h)])
 	_rd.texture_copy(
 		_tex[_cur], _save_tex,
 		Vector3.ZERO, Vector3.ZERO,
@@ -680,9 +706,7 @@ func _gpu_load() -> void:
 		return
 	# Wipe first: if the snapshot is smaller than the current grid, the
 	# uncovered region must not keep whatever is there now.
-	var zeros := PackedByteArray()
-	zeros.resize(_gpu_w * _gpu_h * 4)
-	_rd.texture_update(_tex[_cur], 0, zeros)
+	_rd.texture_update(_tex[_cur], 0, _blank_grid(_gpu_w, _gpu_h))
 
 	# Same bottom-left anchoring as a resize.
 	var copy_w := mini(_saved_w, _gpu_w)

@@ -105,6 +105,7 @@ func _ready() -> void:
 	menu.speed_changed.connect(func(fps: int) -> void: fps_setting = fps)
 	menu.solid_floor_changed.connect(func(on: bool) -> void: sim.solid_floor = on)
 	menu.solid_ceiling_changed.connect(func(on: bool) -> void: sim.solid_ceiling = on)
+	menu.heat_view_changed.connect(func(on: bool) -> void: sim.heat_view = on)
 	menu.clear_pressed.connect(_on_clear)
 	menu.save_pressed.connect(func() -> void: sim.save_canvas())
 	menu.load_pressed.connect(_on_load)
@@ -230,6 +231,8 @@ func _parse_test_args() -> void:
 				menu.user_positioned = true
 				menu.position = Vector2(int(pa[0]), int(pa[1]))
 				_position_menu()
+		elif arg == "--heat":
+			sim.heat_view = true
 		elif arg == "--hide-ui":
 			# The panel floats over the bottom of the canvas, so hiding it
 			# is the only way to inspect what is happening at the floor.
@@ -317,6 +320,17 @@ func _setup_demo(name: String) -> void:
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SEGMENT, 250, 420, 250, 420, 26)
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SQUARE, 630, 420, 630, 420, 26)
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SPRAY, 1010, 420, 1010, 420, 30)
+		"heat":
+			# A lava pool in a basin, an ice block, and water poured on
+			# both: conduction should melt the ice and boil the water
+			# without any rule naming lava or ice specifically.
+			sim.stamp_segment(Elements.WALL, 200, 620, 1100, 620, 5)
+			sim.stamp_segment(Elements.WALL, 200, 470, 200, 620, 5)
+			sim.stamp_segment(Elements.WALL, 1100, 470, 1100, 620, 5)
+			sim.stamp_rect(Elements.LAVA, 210, 560, 520, 616, 100)
+			sim.stamp_rect(Elements.ICE, 800, 500, 1000, 616, 100)
+			sim.stamp_stroke(Elements.WATER, FallingSand.CMD_SEGMENT,
+				650, 120, 650, 120, 6, true, true)
 		"c4":
 			# Three charges at the scale a player actually paints them,
 			# all lit with the default radius-2 brush: dab beside, dab on

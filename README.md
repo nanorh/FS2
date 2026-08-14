@@ -59,6 +59,18 @@ wet soil and the trees they sprout all still run, and any already on the canvas
 behaves normally; it is only hidden from the picker. Restore it by adding `SOIL`
 back to `MENU_ITEMS` in `src/sim/elements.gd`.
 
+Every cell carries a **temperature**. Heat conducts between neighbours, leaks
+slowly toward room temperature, and lava, fire and cryo act as reservoirs that hold
+their own temperature and so warm or chill everything near them. Materials arrive
+at their natural temperature — lava at 1200°C, ice below zero — and phase changes
+follow from the field rather than from rules naming a specific heat source: water
+boils wherever it gets hot enough and freezes wherever it gets cold enough, and ice
+melts wherever it is warm. **Heat** in the World group draws the temperature field
+instead of the materials: blue cold, grey room temperature, red through white hot.
+
+One consequence worth knowing: ice is no longer permanent. A block left in open air
+warms up and melts, where before it only melted on contact with specific materials.
+
 **Solid** toggles what the edges of the world do. By default material that falls off
 the bottom is discarded and gas that rises off the top escapes, as in the original.
 Turn on **Floor** and material piles up against the bottom instead; turn on
@@ -81,7 +93,17 @@ so a save taken at one size loads correctly at another.
 The grid lives in two ping-ponged `R32UI` storage textures. A cell's low 6 bits are
 its element id — the same 34 ids, in the same order, as the original's
 `elements.js`. Bit 6 is a "moved this tick" flag used by the movement passes, and
-bit 7 marks the cell as a source of its own element. Sources cost no extra memory
+bit 7 marks the cell as a source of its own element, and bits 8–23 hold temperature
+in **tenths of a degree**, offset so it can go below zero. Tenths rather than whole
+degrees matters: the slow leak toward room temperature moves a cell by a fraction
+of a degree per tick, and in whole degrees that rounds back to the same integer
+every time, leaving temperatures frozen forever. Movement carries the temperature
+with the material it moves, so heat travels with the stuff that is flowing, and
+`store()` in the reaction pass writes the tick's temperature back for every rule —
+which is why an element change carries its heat across for free, and boiling water
+becomes steam at the water's own temperature.
+
+Sources cost no extra memory
 and need no new element ids; the movement pass loads them as already-moved so
 nothing can shift or displace them, and the reaction pass rewrites every cell, so
 it is the one place the bit could be lost and the one place it is preserved.
@@ -163,16 +185,16 @@ godot --path . -- --demo=liquids --screenshot=out.png --frames=1200
 Demos: `sand`, `liquids`, `fire`, `boom`, `boom2`, `lava`, `tree`, `magic`,
 `stress`, `brushes` (the three stroke profiles), `fillbox` (a divided container for
 testing fill), `sources` (water, sand and fire emitters), `bounds` (material
-heading for the floor and gas for the ceiling) and `c4` (three charges lit at the
-scale a player actually paints them). Add `--test-saveload` to exercise a save → clear → load round
+heading for the floor and gas for the ceiling), `c4` (three charges lit at the
+scale a player actually paints them) and `heat` (lava and ice in one basin). Add `--test-saveload` to exercise a save → clear → load round
 trip, `--test-fill=x,y[,element]` to seed a bucket fill mid-run, and
 `--resize=1400x900,1700x1000` to drive one or more window resizes (spread through
 the first half of the frame budget).
 
 Also `--solid=floor,ceiling` to start with solid edges, `--hide-ui` to drop the
 floating panel (the only way to see what is happening at the very bottom of the
-canvas), `--collapsed` to start with the panel collapsed, and `--panel-at=x,y` to
-place it, which exercises the same path a drag does.
+canvas), `--collapsed` to start with the panel collapsed, `--panel-at=x,y` to
+place it (the same path a drag uses), and `--heat` to start in heat view.
 
 The window renders uncapped, so `--frames=N` is *not* N simulation ticks; the
 screenshot log prints the actual tick count and the final grid size.

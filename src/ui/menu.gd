@@ -19,6 +19,7 @@ signal overwrite_changed(enabled: bool)
 signal speed_changed(fps: int)
 signal solid_floor_changed(enabled: bool)
 signal solid_ceiling_changed(enabled: bool)
+signal heat_view_changed(enabled: bool)
 signal clear_pressed
 signal save_pressed
 signal load_pressed
@@ -352,7 +353,15 @@ func _build_bounds() -> Control:
 	floor_btn.toggled.connect(func(on: bool) -> void: solid_floor_changed.emit(on))
 	col.add_child(floor_btn)
 
-	return _column(UITheme.caption("Solid"), col)
+	var heat := Button.new()
+	heat.text = "Heat"
+	heat.toggle_mode = true
+	heat.tooltip_text = "Heat view\nDraw the temperature field instead of the materials: blue is cold, grey room temperature, red to white hot."
+	UITheme.style_ghost(heat, UITheme.ACCENT)
+	heat.toggled.connect(func(on: bool) -> void: heat_view_changed.emit(on))
+	col.add_child(heat)
+
+	return _column(UITheme.caption("World"), col)
 
 
 func _build_actions() -> Control:

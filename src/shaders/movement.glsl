@@ -196,9 +196,14 @@ bool gas_permeable(uint e) {
 // 3 = bottom-right.
 ivec2 cpos[4];
 uint ce[4];
+// Everything above the element and moved bits: the source flag and the
+// temperature. It travels with the material, so heat is carried by the
+// stuff that is moving rather than staying put in the grid.
+uint cpay[4];
 bool cmoved[4];
 bool cvalid[4];
 bool cdirty[4];
+const uint PAYLOAD_MASK = 0xFFFFFF80u;
 
 bool in_grid(ivec2 p) {
 	return p.x >= 0 && p.y >= 0 && p.x < grid_size.x && p.y < grid_size.y;
@@ -211,7 +216,10 @@ uint load_elem_global(ivec2 p) {
 
 void move_cell(int from, int to) {
 	ce[to] = ce[from];
+	cpay[to] = cpay[from];
 	ce[from] = EL_BACKGROUND;
+	// cpay[from] is left alone: the vacated space keeps its heat, as air
+	// at whatever temperature the material left behind.
 	cmoved[to] = true;
 	cdirty[from] = true;
 	cdirty[to] = true;
@@ -221,6 +229,9 @@ void swap_cells(int a, int b) {
 	uint tmp = ce[a];
 	ce[a] = ce[b];
 	ce[b] = tmp;
+	uint tmpp = cpay[a];
+	cpay[a] = cpay[b];
+	cpay[b] = tmpp;
 	cmoved[a] = true;
 	cmoved[b] = true;
 	cdirty[a] = true;
@@ -385,9 +396,11 @@ void main() {
 		if (cvalid[i]) {
 			uint raw = imageLoad(grid, cpos[i]).r;
 			ce[i] = raw & 63u;
+			cpay[i] = raw & PAYLOAD_MASK;
 			cmoved[i] = (raw & (MOVED_BIT | EMITTER_BIT)) != 0u;
 		} else {
 			ce[i] = EL_OOB;
+			cpay[i] = 0u;
 			cmoved[i] = true;
 		}
 	}
@@ -425,7 +438,7 @@ void main() {
 
 	for (int i = 0; i < 4; i++) {
 		if (cvalid[i] && cdirty[i]) {
-			uint raw = ce[i] | (cmoved[i] ? MOVED_BIT : 0u);
+			uint raw = ce[i] | cpay[i] | (cmoved[i] ? MOVED_BIT : 0u);
 			imageStore(grid, cpos[i], uvec4(raw, 0u, 0u, 0u));
 		}
 	}

@@ -168,6 +168,10 @@ const uint SALT_WELL = 86u;
 const uint SALT_FIRERISE = 87u;
 const uint SALT_CNITRO = 88u;
 const uint SALT_EMIT = 89u;
+const uint SALT_BOIL = 90u;
+const uint SALT_FREEZE = 91u;
+const uint SALT_MELT = 92u;
+const uint SALT_CONDENSE = 93u;
 
 ivec2 grid_size;
 ivec2 P;
@@ -281,8 +285,68 @@ bool wax_melts(ivec2 q) {
 	return rnd100_at(q, SALT_WAXMELT) < 1u && borders4_at(q, EL_FIRE);
 }
 
+/* ------------------------------ Heat ------------------------------ */
+//
+// Every cell carries a temperature in bits 8-23 (celsius + TEMP_OFFSET).
+// Heat conducts between neighbours each tick, leaks slowly toward room
+// temperature, and a few materials act as reservoirs that hold their own
+// temperature and so warm or chill everything around them.
+//
+// g_temp is computed once per cell before any rule runs, and store()
+// writes it back, so every existing rule carries temperature across an
+// element change for free: water that boils becomes steam at the water's
+// temperature.
+
+// Stored in TENTHS of a degree. Whole degrees are not enough: the slow
+// leak toward room temperature moves a cell by a fraction of a degree
+// per tick, which rounds back to the same integer every time and leaves
+// the temperature frozen forever.
+const int TEMP_OFFSET = 5000;
+const float AMBIENT_C = 20.0;
+
+float g_temp;
+
+float temp_of_raw(uint r) {
+	return float(int((r >> 8) & 0xFFFFu) - TEMP_OFFSET) * 0.1;
+}
+
+uint temp_bits(float celsius) {
+	return uint(clamp(int(round(celsius * 10.0)) + TEMP_OFFSET, 0, 65535)) << 8;
+}
+
+// Neighbour temperature; outside the grid counts as room temperature so
+// the edges of the world act as a heat sink rather than a mirror.
+float Temp(ivec2 p) {
+	if (!in_grid(p)) return AMBIENT_C;
+	return temp_of_raw(imageLoad(src_grid, p).r);
+}
+
+// Reservoir temperature, or -10000 for materials that merely conduct.
+int source_temp(uint e) {
+	switch (e) {
+		case EL_LAVA: return 1200;
+		case EL_TORCH: return 900;
+		case EL_FIRE: return 850;
+		case EL_CRYO: return -200;
+	}
+	return -10000;
+}
+
+// How readily a material passes heat on, 0..1.
+float conductivity(uint e) {
+	switch (e) {
+		case EL_BACKGROUND: return 0.10;  // air is a poor conductor
+		case EL_STEAM: case EL_METHANE: return 0.15;
+		case EL_WALL: case EL_ROCK: case EL_CONCRETE: return 0.32;
+		case EL_ICE: case EL_CHILLED_ICE: return 0.34;
+		case EL_WATER: case EL_SALT_WATER: return 0.28;
+		case EL_LAVA: case EL_FIRE: return 0.45;
+	}
+	return 0.22;
+}
+
 void store(uint e) {
-	imageStore(dst_grid, P, uvec4(e, 0u, 0u, 0u));
+	imageStore(dst_grid, P, uvec4(e | temp_bits(g_temp), 0u, 0u, 0u));
 }
 
 void main() {
@@ -293,6 +357,22 @@ void main() {
 	uint raw = imageLoad(src_grid, P).r;
 	uint e = raw & 63u;
 
+	// Conduct heat before anything else, so every rule below sees this
+	// tick's temperature and store() carries it through any conversion.
+	{
+		float t = temp_of_raw(raw);
+		float neighbours =
+			Temp(P + ivec2(0, 1)) + Temp(P + ivec2(0, -1)) +
+			Temp(P + ivec2(-1, 0)) + Temp(P + ivec2(1, 0));
+		t += conductivity(e) * (neighbours * 0.25 - t);
+		// Slow leak to the room, so heat eventually dissipates instead
+		// of accumulating forever in a sealed pocket.
+		t += 0.01 * (AMBIENT_C - t);
+		int reservoir = source_temp(e);
+		if (reservoir > -9999) t = float(reservoir);
+		g_temp = t;
+	}
+
 	// A source is a fixed feature of the world: it never moves, never
 	// reacts, and never burns away. Only the eraser removes it. Emission
 	// itself is handled from the receiving background cell below, so
@@ -300,7 +380,7 @@ void main() {
 	// intact - this is the only place it could be lost, since the
 	// reaction pass rewrites every cell.
 	if ((raw & EMITTER_BIT) != 0u) {
-		imageStore(dst_grid, P, uvec4(e | EMITTER_BIT, 0u, 0u, 0u));
+		imageStore(dst_grid, P, uvec4(e | EMITTER_BIT | temp_bits(g_temp), 0u, 0u, 0u));
 		return;
 	}
 
@@ -435,6 +515,13 @@ void main() {
 	}
 
 	case EL_WATER: {
+		// Thermal phase changes. These are what the temperature field
+		// buys: water boils wherever it gets hot enough and freezes
+		// wherever it gets cold enough, with no rule naming a specific
+		// heat source.
+		if (g_temp >= 100.0 && rnd100_at(P, SALT_BOIL) < 25u) { store(EL_STEAM); return; }
+		if (g_temp <= -2.0 && rnd100_at(P, SALT_FREEZE) < 10u) { store(EL_ICE); return; }
+
 		// LAVA_ACTION: adjacent lava flashes water to steam (unconditional).
 		if (n_dn == EL_LAVA || n_up == EL_LAVA || n_lf == EL_LAVA || n_rt == EL_LAVA) {
 			store(EL_STEAM); return;
@@ -662,6 +749,8 @@ void main() {
 	}
 
 	case EL_ICE: {
+		// Melts wherever it is warm, whatever warmed it.
+		if (g_temp >= 4.0 && rnd100_at(P, SALT_MELT) < 20u) { store(EL_WATER); return; }
 		if (surrounded4_at(P, EL_ICE)) break;
 		// ICE_ACTION melt matrix.
 		if (rnd100_at(P, SALT_ICEW) < 1u && borders4_at(P, EL_WATER)) { store(EL_WATER); return; }
@@ -724,6 +813,10 @@ void main() {
 	}
 
 	case EL_STEAM: {
+		// Condenses once it has cooled well below boiling, which is what
+		// makes a plume shorten as it drifts away from its heat source.
+		if (g_temp < 80.0 && rnd100_at(P, SALT_CONDENSE) < 2u) { store(EL_WATER); return; }
+
 		// ICE_ACTION: ice condenses bordering steam (70% * 50%).
 		for (int i = 0; i < 4; i++) {
 			ivec2 q = P + DIR4[i];
