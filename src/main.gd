@@ -349,6 +349,12 @@ func _setup_demo(name: String) -> void:
 			sim.stamp_segment(Elements.WALL, 520, 120, 520, 555, 5)
 			sim.stamp_segment(Elements.WALL, 520, 580, 520, 645, 5)
 			sim.stamp_rect(Elements.WATER, 306, 130, 516, 640, 100)
+		"cavern":
+			# A sealed air pocket inside a massive block of ice. The
+			# trapped air should give up the heat it holds, melt a little
+			# ice, and then settle - not keep melting forever.
+			sim.stamp_rect(Elements.ICE, 330, 170, 950, 700, 100)
+			sim.stamp_rect(Elements.BACKGROUND, 520, 330, 770, 545, 100)
 		"thermal":
 			# An ice block and a lava blob sitting apart in open air, on
 			# a wall shelf. Watch in heat view: the ice should hold a

@@ -222,8 +222,9 @@ testing fill), `sources` (water, sand and fire emitters), `bounds` (material
 heading for the floor and gas for the ceiling), `c4` (three charges lit at the
 scale a player actually paints them), `heat` (lava and ice in one basin) and
 `blast` (a charge buried under a sand bank), `tank` (a breached water tank),
-`gunpowder` (a pile chain-detonating) and `thermal` (ice and lava apart in open
-air, best watched in heat view). Add `--test-saveload` to exercise a save → clear → load round
+`gunpowder` (a pile chain-detonating), `thermal` (ice and lava apart in open air,
+best watched in heat view) and `cavern` (a sealed air pocket inside a massive ice
+block). Add `--test-saveload` to exercise a save → clear → load round
 trip, `--test-fill=x,y[,element]` to seed a bucket fill mid-run, and
 `--resize=1400x900,1700x1000` to drive one or more window resizes (spread through
 the first half of the frame budget).
@@ -266,6 +267,13 @@ tuning:
   tick of acceleration, and that the Margolus partition lets a cell take at most
   one step per pass in a given direction. Going further likely needs velocity to
   carry material along a whole ray per tick rather than one block-step at a time.
+- **A sealed air pocket stays weakly coupled to the room.** Air exchanges heat with
+  the room at a fixed rate, but whether a given pocket of air actually connects to
+  the outside is a global property, and a local pass cannot know it. So a cavern
+  sealed inside a block of ice keeps drawing a trickle of warmth and goes on
+  melting very slowly, where in reality it would give up the heat it holds, melt a
+  little, and stop. The visible behaviour is close — meltwater pools in the floor
+  and the walls round off — but it never quite reaches equilibrium.
 - **A gunpowder explosion that fails to ignite puts one grain back rather than
   painting a 3×3 of fresh powder.** The original scatters unburnt powder across
   the blast square, which is fine when cells detonate one at a time down a

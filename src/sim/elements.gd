@@ -96,7 +96,7 @@ static var MENU_ITEMS: Array[int] = [
 	FIRE, SALT, OIL, WAX,
 	ICE, GUNPOWDER, NAPALM, NITRO,
 	C4, LAVA, CRYO, FUSE,
-	MYSTERY, CONCRETE, METHANE, BACKGROUND,
+	MYSTERY, CONCRETE, METHANE, STEAM, BACKGROUND,
 ]
 
 # Materials that can be placed as a source. Anything that flows - powder,
@@ -104,7 +104,7 @@ static var MENU_ITEMS: Array[int] = [
 # excluded: a source of something that never moves is just the solid.
 static var EMITTABLE: Array[int] = [
 	SAND, WATER, SALT, OIL, FIRE, GUNPOWDER,
-	NAPALM, NITRO, LAVA, CRYO, MYSTERY, CONCRETE, METHANE,
+	NAPALM, NITRO, LAVA, CRYO, MYSTERY, CONCRETE, METHANE, STEAM,
 ]
 
 
@@ -118,6 +118,7 @@ static var MENU_NAMES := {
 	NITRO: "NITRO", NAPALM: "NAPALM", C4: "C-4", CONCRETE: "CONCRETE",
 	BACKGROUND: "ERASER", FUSE: "FUSE", ICE: "ICE", LAVA: "LAVA",
 	METHANE: "METHANE", CRYO: "CRYO", MYSTERY: "???", SOIL: "SOIL",
+	STEAM: "STEAM",
 }
 
 # Shown on hover. Each line describes what the element actually does in
@@ -145,6 +146,7 @@ static var DESCRIPTIONS := {
 	MYSTERY: "Unstable. Reacts unpredictably with sand, salt, pollen and fire.",
 	CONCRETE: "Falls, then sets into wall - faster where it settles against existing wall.",
 	METHANE: "Rises as a gas. Explodes on contact with fire. Seeps from rock that touches oil.",
+	STEAM: "Rises and spreads as a hot gas. Condenses back to water as it cools, and melts ice fast.",
 	SOIL: "Absorbs water to become wet soil, which can sprout a tree.",
 	BACKGROUND: "Eraser. Removes whatever you paint over.",
 }

@@ -37,7 +37,7 @@ const DEFAULT_RADIUS := 2
 
 # 20 materials as 10x2. Chips are a fixed width and the block is centred:
 # stretching them to the window only moves the empty space inside them.
-const PALETTE_COLUMNS := 10
+const PALETTE_COLUMNS := 11
 const CHIP_WIDTH := 98
 
 # True once the user has dragged the panel; the owner then stops
