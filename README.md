@@ -17,9 +17,14 @@ editor, or from a shell:
 godot --path C:\Users\user\Godot\FS2
 ```
 
-Click on the canvas to draw the selected element. The panel below the canvas holds
-the element palette, pen size, overwrite toggle, spigot configuration, a speed
-slider (0 pauses), and Clear/Save/Load.
+Click on the canvas to draw the selected element. A ring follows the cursor showing
+exactly which cells the next stroke will cover — the grid is one cell per pixel, so
+it is a literal preview rather than an approximation.
+
+The toolbar below the canvas is grouped into **Elements** (all 24 drawable
+materials, each with its in-game colour as a swatch), **Brush** (pen size and the
+overwrite toggle), **Simulation** (speed slider — 0 pauses — plus the live tick
+rate), **Spigots** (the four emitters), and **Canvas** (Save / Load / Clear).
 
 Resize the window and the grid grows or shrinks with it — you get more world, not
 a scaled-up picture. Existing contents are anchored to the **bottom-left**, so
@@ -88,8 +93,9 @@ src/
     particles.gd          CPU particle pool and tree growth
     spigots.gd            The four top-of-canvas emitters
   ui/
+    ui_theme.gd           Design tokens and style factories
     menu.gd               Control panel
-    brush.gd              Pointer drawing
+    brush.gd              Pointer drawing and cursor ring
   shaders/                stamp / reaction / movement / scramble / colorize
 ```
 

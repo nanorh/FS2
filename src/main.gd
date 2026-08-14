@@ -7,7 +7,9 @@ const MAX_FRAME_DEBT := 5.0
 const MAX_TICKS_PER_FRAME := 5
 
 # Height reserved for the control panel; the grid gets everything above it.
-const MENU_HEIGHT := 140
+# project.godot's default viewport height is this plus 720, so a fresh
+# window still starts at the reference 1280x720 grid.
+const MENU_HEIGHT := 156
 
 # Rebuilding the grid textures is not free, so wait for the drag to
 # settle rather than reallocating on every resize event.
