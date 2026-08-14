@@ -89,18 +89,21 @@ static func glyph(kind: int, size: int, colour: Color) -> ImageTexture:
 					var d := maxf(absf(x - c), absf(y - c))
 					_put(img, x, y, colour, clampf(1.2 - absf(d - r), 0.0, 1.0))
 		GLYPH_SPRAY:
-			# Fixed scatter so the icon is stable between runs.
+			# Fixed scatter so the icon is stable between runs. Balanced
+			# about the centre and denser there, mirroring the falloff
+			# the spray brush actually paints.
 			var pts := [
-				Vector2(0.0, -0.75), Vector2(-0.6, -0.3), Vector2(0.62, -0.35),
-				Vector2(-0.28, 0.12), Vector2(0.3, 0.18), Vector2(-0.75, 0.55),
-				Vector2(0.08, 0.62), Vector2(0.72, 0.6),
+				Vector2(0.0, 0.0), Vector2(-0.34, -0.2), Vector2(0.32, -0.26),
+				Vector2(0.2, 0.3), Vector2(-0.26, 0.32), Vector2(0.0, -0.62),
+				Vector2(-0.66, 0.06), Vector2(0.64, 0.1), Vector2(0.0, 0.66),
+				Vector2(-0.56, -0.56), Vector2(0.58, -0.54), Vector2(-0.54, 0.58),
+				Vector2(0.56, 0.56),
 			]
 			for pt in pts:
 				var px := int(round(c + pt.x * r))
 				var py := int(round(c + pt.y * r))
-				_put(img, px, py, colour, 1.0)
-				_put(img, px + 1, py, colour, 0.45)
-				_put(img, px, py + 1, colour, 0.45)
+				var strength := 1.0 if pt.length() < 0.45 else 0.7
+				_put(img, px, py, colour, strength)
 		GLYPH_FILL:
 			# Square outline with the lower half solid: a fill level.
 			for y in size:
@@ -183,6 +186,10 @@ static func style_swatch(b: Button, colour: Color, is_empty := false) -> void:
 # Square icon button for the tool row.
 static func style_tool(b: Button) -> void:
 	b.focus_mode = Control.FOCUS_NONE
+	# Button.icon_alignment defaults to LEFT, which parks the glyph off
+	# centre in a fixed-size square button.
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
 	b.add_theme_stylebox_override("normal", box(Color(0, 0, 0, 0), R_SM, 0, 0))
 	b.add_theme_stylebox_override("hover", box(RAISED_HOVER, R_SM, 0, 0))
 	b.add_theme_stylebox_override("pressed",
