@@ -349,6 +349,14 @@ func _setup_demo(name: String) -> void:
 			sim.stamp_segment(Elements.WALL, 520, 120, 520, 555, 5)
 			sim.stamp_segment(Elements.WALL, 520, 580, 520, 645, 5)
 			sim.stamp_rect(Elements.WATER, 306, 130, 516, 640, 100)
+		"thermal":
+			# An ice block and a lava blob sitting apart in open air, on
+			# a wall shelf. Watch in heat view: the ice should hold a
+			# cold halo and melt from its surface inward, and the lava
+			# should cool from the outside in, not uniformly.
+			sim.stamp_segment(Elements.WALL, 150, 640, 1150, 640, 5)
+			sim.stamp_rect(Elements.ICE, 250, 480, 470, 636, 100)
+			sim.stamp_rect(Elements.LAVA, 800, 520, 980, 636, 100)
 		"heat":
 			# A lava pool in a basin, an ice block, and water poured on
 			# both: conduction should melt the ice and boil the water

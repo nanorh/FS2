@@ -464,9 +464,15 @@ void main() {
 			Temp(P + ivec2(0, 1)) + Temp(P + ivec2(0, -1)) +
 			Temp(P + ivec2(-1, 0)) + Temp(P + ivec2(1, 0));
 		t += conductivity(e) * (neighbours * 0.25 - t);
-		// Slow leak to the room, so heat eventually dissipates instead
-		// of accumulating forever in a sealed pocket.
-		t += 0.01 * (AMBIENT_C - t);
+		// Only air and gas exchange heat with the room. A cell buried
+		// inside a body touches no room to lose heat to, so it can only
+		// change by conducting to its neighbours - which is what makes a
+		// body warm from its surface inward rather than everywhere at
+		// once. Leaking from every cell made a whole block equilibrate
+		// uniformly and so melt all at the same moment.
+		if (e == EL_BACKGROUND || e == EL_STEAM || e == EL_METHANE) {
+			t += 0.04 * (AMBIENT_C - t);
+		}
 		int reservoir = source_temp(e);
 		if (reservoir > -9999) t = float(reservoir);
 		g_temp = t;
@@ -675,8 +681,27 @@ void main() {
 		// buys: water boils wherever it gets hot enough and freezes
 		// wherever it gets cold enough, with no rule naming a specific
 		// heat source.
-		if (g_temp >= 100.0 && rnd100_at(P, SALT_BOIL) < 25u) { store(EL_STEAM); return; }
-		if (g_temp <= -2.0 && rnd100_at(P, SALT_FREEZE) < 10u) { store(EL_ICE); return; }
+		// Latent heat: water pins itself at its boiling and freezing
+		// points while it changes state, and the arriving or departing
+		// heat drives the change instead of moving the temperature. A
+		// pan of water therefore holds a lava pool near 100 rather than
+		// racing past it, and the change rate follows the heat flux.
+		if (g_temp > 100.0) {
+			float excess = g_temp - 100.0;
+			g_temp = 100.0;
+			if (float(rnd100_at(P, SALT_BOIL)) < clamp(excess * 2.0, 0.0, 60.0)) {
+				store(EL_STEAM);
+				return;
+			}
+		}
+		if (g_temp < 0.0) {
+			float deficit = -g_temp;
+			g_temp = 0.0;
+			if (float(rnd100_at(P, SALT_FREEZE)) < clamp(deficit * 2.0, 0.0, 40.0)) {
+				store(EL_ICE);
+				return;
+			}
+		}
 
 		// LAVA_ACTION: adjacent lava flashes water to steam (unconditional).
 		if (n_dn == EL_LAVA || n_up == EL_LAVA || n_lf == EL_LAVA || n_rt == EL_LAVA) {
@@ -914,8 +939,19 @@ void main() {
 	}
 
 	case EL_ICE: {
-		// Melts wherever it is warm, whatever warmed it.
-		if (g_temp >= 4.0 && rnd100_at(P, SALT_MELT) < 20u) { store(EL_WATER); return; }
+		// Ice holds at its melting point while it melts: heat arriving
+		// goes into the phase change rather than into its temperature.
+		// That is what lets a block chill everything around it and melt
+		// from the outside in, instead of simply warming up alongside
+		// its surroundings and vanishing all at once.
+		if (g_temp > 0.0) {
+			float excess = g_temp;
+			g_temp = 0.0;
+			if (float(rnd100_at(P, SALT_MELT)) < clamp(excess * 2.5, 0.0, 50.0)) {
+				store(EL_WATER);
+				return;
+			}
+		}
 		if (surrounded4_at(P, EL_ICE)) break;
 		// ICE_ACTION melt matrix.
 		if (rnd100_at(P, SALT_ICEW) < 1u && borders4_at(P, EL_WATER)) { store(EL_WATER); return; }

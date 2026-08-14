@@ -86,8 +86,16 @@ material may cross several cells in a tick instead of the usual one. This is wha
 makes an explosion throw debris in radiating streaks rather than just cratering.
 **Flow** draws the velocity field. See the limitation note at the end of this file.
 
+Only air and gas exchange heat with the room; a cell buried inside a body touches
+no room to lose heat to, so bodies warm and cool from their surfaces inward rather
+than uniformly. Ice and water also carry **latent heat**: they pin themselves at
+their melting and boiling points while changing state, so arriving heat drives the
+phase change instead of the temperature. A block of ice therefore acts as a cold
+reservoir — it holds a cold halo around itself and melts from the outside in,
+leaving meltwater pooling round a shrinking core.
+
 One consequence worth knowing: ice is no longer permanent. A block left in open air
-warms up and melts, where before it only melted on contact with specific materials.
+melts eventually, where before it only melted on contact with specific materials.
 
 **Solid** toggles what the edges of the world do. By default material that falls off
 the bottom is discarded and gas that rises off the top escapes, as in the original.
@@ -213,7 +221,9 @@ Demos: `sand`, `liquids`, `fire`, `boom`, `boom2`, `lava`, `tree`, `magic`,
 testing fill), `sources` (water, sand and fire emitters), `bounds` (material
 heading for the floor and gas for the ceiling), `c4` (three charges lit at the
 scale a player actually paints them), `heat` (lava and ice in one basin) and
-`blast` (a charge buried under a sand bank) and `tank` (a breached water tank). Add `--test-saveload` to exercise a save → clear → load round
+`blast` (a charge buried under a sand bank), `tank` (a breached water tank),
+`gunpowder` (a pile chain-detonating) and `thermal` (ice and lava apart in open
+air, best watched in heat view). Add `--test-saveload` to exercise a save → clear → load round
 trip, `--test-fill=x,y[,element]` to seed a bucket fill mid-run, and
 `--resize=1400x900,1700x1000` to drive one or more window resizes (spread through
 the first half of the frame budget).
