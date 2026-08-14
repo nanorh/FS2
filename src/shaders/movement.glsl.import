@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cagi7e44udc04"
+path="res://.godot/imported/movement.glsl-9c6578c353f947de58af31ce0418b365.res"
+
+[deps]
+
+source_file="res://src/shaders/movement.glsl"
+dest_files=["res://.godot/imported/movement.glsl-9c6578c353f947de58af31ce0418b365.res"]
+
+[params]
+

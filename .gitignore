@@ -1,0 +1,17 @@
+# Godot 4 editor cache and imported-resource binaries.
+# The .import / .uid files alongside the sources are tracked on purpose:
+# they carry the stable resource IDs the project references.
+.godot/
+
+# Godot export output
+/build/
+/export/
+export_presets.cfg
+
+# Machine-local Claude Code settings
+.claude/settings.local.json
+
+# OS cruft
+Thumbs.db
+desktop.ini
+.DS_Store

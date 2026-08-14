@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dn4liwje5rmbe"
+path="res://.godot/imported/colorize.glsl-aab4c22fd3883eeb8af64e3411a84779.res"
+
+[deps]
+
+source_file="res://src/shaders/colorize.glsl"
+dest_files=["res://.godot/imported/colorize.glsl-aab4c22fd3883eeb8af64e3411a84779.res"]
+
+[params]
+

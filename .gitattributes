@@ -1,0 +1,10 @@
+# Normalize to LF in the repository; check out native on each platform.
+* text=auto
+
+*.gd    text
+*.glsl  text
+*.tscn  text
+*.godot text
+*.import text
+*.uid   text
+*.md    text

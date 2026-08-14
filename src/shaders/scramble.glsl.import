@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://u1a0qqqh2ngt"
+path="res://.godot/imported/scramble.glsl-611d0172c9f4fab0f9ed38cf7c012380.res"
+
+[deps]
+
+source_file="res://src/shaders/scramble.glsl"
+dest_files=["res://.godot/imported/scramble.glsl-611d0172c9f4fab0f9ed38cf7c012380.res"]
+
+[params]
+
