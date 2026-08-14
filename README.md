@@ -162,8 +162,9 @@ godot --path . -- --demo=liquids --screenshot=out.png --frames=1200
 
 Demos: `sand`, `liquids`, `fire`, `boom`, `boom2`, `lava`, `tree`, `magic`,
 `stress`, `brushes` (the three stroke profiles), `fillbox` (a divided container for
-testing fill), `sources` (water, sand and fire emitters) and `bounds` (material
-heading for the floor and gas for the ceiling). Add `--test-saveload` to exercise a save → clear → load round
+testing fill), `sources` (water, sand and fire emitters), `bounds` (material
+heading for the floor and gas for the ceiling) and `c4` (three charges lit at the
+scale a player actually paints them). Add `--test-saveload` to exercise a save → clear → load round
 trip, `--test-fill=x,y[,element]` to seed a bucket fill mid-run, and
 `--resize=1400x900,1700x1000` to drive one or more window resizes (spread through
 the first half of the frame budget).

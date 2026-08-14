@@ -317,6 +317,17 @@ func _setup_demo(name: String) -> void:
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SEGMENT, 250, 420, 250, 420, 26)
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SQUARE, 630, 420, 630, 420, 26)
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SPRAY, 1010, 420, 1010, 420, 30)
+		"c4":
+			# Three charges at the scale a player actually paints them,
+			# all lit with the default radius-2 brush: dab beside, dab on
+			# top, and a charge resting on a wall.
+			sim.stamp_segment(Elements.WALL, 150, 600, 1150, 600, 4)
+			sim.stamp_circle(Elements.C4, 300, 560, 14)
+			sim.stamp_circle(Elements.FIRE, 283, 560, 2)
+			sim.stamp_circle(Elements.C4, 640, 560, 14)
+			sim.stamp_circle(Elements.FIRE, 640, 560, 2)
+			sim.stamp_circle(Elements.C4, 980, 585, 14)
+			sim.stamp_circle(Elements.FIRE, 980, 570, 2)
 		"sources":
 			# Fixed emitters: water, sand, and fire acting as a torch
 			# over a plant field. Each should feed continuously without
