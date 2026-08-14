@@ -256,5 +256,13 @@ tuning:
   tick of acceleration, and that the Margolus partition lets a cell take at most
   one step per pass in a given direction. Going further likely needs velocity to
   carry material along a whole ray per tick rather than one block-step at a time.
+- **A gunpowder explosion that fails to ignite puts one grain back rather than
+  painting a 3×3 of fresh powder.** The original scatters unburnt powder across
+  the blast square, which is fine when cells detonate one at a time down a
+  sequential scan, because a grain is usually destroyed before its turn comes.
+  Evaluated in parallel every grain touching the fire goes off on the same tick,
+  so nine cells were being created for each one consumed. The result was a cloud
+  of powder that multiplied faster than it fell, hung in the air re-detonating
+  forever, and reappeared immediately after Clear.
 - The MYSTERY + FIRE canvas scramble is a butterfly-swap approximation of a
   Fisher-Yates shuffle, which cannot run sequentially on the GPU.

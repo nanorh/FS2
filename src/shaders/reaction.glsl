@@ -823,8 +823,12 @@ void main() {
 		// GUNPOWDER_ACTION: ignition (95%). The blast itself (3x3 stamp,
 		// possible star particle) is resolved by the CPU from the event.
 		if (rnd100_at(P, SALT_GUNP) < 95u && borders4_at(P, EL_FIRE)) {
+			// The blast impulse is applied once by the explosion stamp,
+			// not here. Injecting per detonating cell every tick kept a
+			// cloud of powder airborne indefinitely: the explosion
+			// regenerates powder, the powder stayed next to the fire
+			// because the pressure held it up, and it detonated forever.
 			emit_event(EV_GUNPOWDER, P, 0u);
-			g_press = max(g_press, 20.0);
 			store(EL_FIRE);
 			return;
 		}
@@ -874,8 +878,10 @@ void main() {
 
 	case EL_C4: {
 		if (rnd100_at(P, SALT_C4) < 60u && borders4_at(P, EL_FIRE)) {
+			// As with gunpowder: C-4 is not consumed here, so injecting
+			// pressure each tick would be a standing source. Its
+			// fireball carries the impulse instead.
 			emit_event(EV_C4, P, 0u);
-			g_press = max(g_press, BLAST_P);
 		}
 		break;
 	}

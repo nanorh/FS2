@@ -200,8 +200,10 @@ func stamp_segment(elem: int, x0: int, y0: int, x1: int, y1: int, radius: int,
 
 
 # Rect covers [x0, x1) x [y0, y1); density is a 0-99 per-cell chance.
-func stamp_rect(elem: int, x0: int, y0: int, x1: int, y1: int, density: int, overwrite := true) -> void:
-	_push_cmd(CMD_RECT, elem, _flags(overwrite, false), x0, y0, x1, y1, density)
+func stamp_rect(elem: int, x0: int, y0: int, x1: int, y1: int, density: int,
+		overwrite := true, pressure := false) -> void:
+	var f := _flags(overwrite, false) | (FLAG_PRESSURE if pressure else 0)
+	_push_cmd(CMD_RECT, elem, f, x0, y0, x1, y1, density)
 
 
 func stamp_cell(elem: int, x: int, y: int, overwrite := true) -> void:
@@ -286,6 +288,15 @@ func resize(new_w: int, new_h: int) -> void:
 
 
 func clear_canvas() -> void:
+	# Drop everything queued that would repaint the canvas the instant it
+	# is wiped: stamps staged this frame, and events still waiting to be
+	# turned into particles. Without this, clearing mid-explosion leaves
+	# the explosion to carry on painting itself back.
+	_staged_cmds.clear()
+	_staged_count = 0
+	_mutex.lock()
+	_pending_events.clear()
+	_mutex.unlock()
 	RenderingServer.call_on_render_thread(_gpu_clear)
 
 

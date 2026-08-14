@@ -41,6 +41,7 @@ var _screenshot_path := ""
 var _screenshot_frames := 180
 var _frame_count := 0
 var _test_saveload := false
+var _test_clear := false
 var _resize_steps: Array[Vector2i] = []
 var _fill_at := Vector2i(-1, -1)
 var _fill_elem := Elements.WATER
@@ -224,6 +225,8 @@ func _parse_test_args() -> void:
 			demo = arg.get_slice("=", 1)
 		elif arg == "--test-saveload":
 			_test_saveload = true
+		elif arg == "--test-clear":
+			_test_clear = true
 		elif arg == "--collapsed":
 			menu.set_collapsed(true)
 		elif arg.begins_with("--panel-at="):
@@ -326,6 +329,10 @@ func _setup_demo(name: String) -> void:
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SEGMENT, 250, 420, 250, 420, 26)
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SQUARE, 630, 420, 630, 420, 26)
 			sim.stamp_stroke(Elements.SAND, FallingSand.CMD_SPRAY, 1010, 420, 1010, 420, 30)
+		"gunpowder":
+			sim.stamp_segment(Elements.WALL, 200, 600, 1100, 600, 5)
+			sim.stamp_rect(Elements.GUNPOWDER, 400, 470, 900, 596, 100)
+			sim.stamp_circle(Elements.FIRE, 404, 560, 5)
 		"blast":
 			# Loose sand piled on a shelf with a nitro charge underneath:
 			# the blast should throw the sand outward, not just burn it.
@@ -411,6 +418,9 @@ func _handle_test_hooks() -> void:
 	if _fill_at.x >= 0 and _frame_count == _screenshot_frames / 3:
 		sim.flood_fill(_fill_at.x, _fill_at.y, _fill_elem)
 		print("fill: seeded at ", _fill_at, " with element ", _fill_elem)
+	if _test_clear and _frame_count == _screenshot_frames / 2:
+		_on_clear()
+		print("clear: pressed at frame ", _frame_count)
 	if _test_saveload:
 		if _frame_count == _screenshot_frames / 4:
 			sim.save_canvas()

@@ -177,10 +177,20 @@ func _handle_gunpowder(x: float, y: float, sim: FallingSand) -> void:
 		_spawn_magic1(x, y, Elements.FIRE)
 		return
 	var burn := _rng.randi() % 100 < 60
-	var replace := Elements.FIRE if burn else Elements.GUNPOWDER
 	var xi := int(x)
 	var yi := int(y)
-	sim.stamp_rect(replace, xi - 1, yi - 1, xi + 2, yi + 2, 100)
+	if burn:
+		# One impulse per explosion, applied here rather than by every
+		# detonating cell every tick.
+		sim.stamp_rect(Elements.FIRE, xi - 1, yi - 1, xi + 2, yi + 2, 100, true, true)
+	else:
+		# The grain failed to go off, so put that one grain back. The
+		# original paints a 3x3 of fresh powder here, which works when
+		# cells detonate one at a time but not when every grain touching
+		# the fire goes on the same tick: nine cells created for each one
+		# consumed multiplies without bound, and the cloud hangs in the
+		# air re-detonating forever instead of falling.
+		sim.stamp_cell(Elements.GUNPOWDER, xi, yi)
 	if burn and _rng.randi() % 100 < 40:
 		# Weaker burn at 2-pixel distance.
 		for off in [Vector2i(0, -2), Vector2i(0, 2), Vector2i(-2, 0), Vector2i(2, 0)]:
